@@ -40,17 +40,15 @@ func Run(secret string, host string, port int, mode uint8, args []string) {
 		addr := fmt.Sprintf(":%d", port)
 		ln, err := pel.Listen(addr, secret, false)
 		if err != nil {
-			fmt.Println("Address already in use.")
-			os.Exit(0)
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 		fmt.Print("Waiting for the server to connect...")
 		layer, err := ln.Accept()
 		ln.Close()
 		if err != nil {
-			fmt.Print("\nPassword: ")
-			fmt.Scanln()
-			fmt.Println("Authentication failed.")
-			os.Exit(0)
+			fmt.Println("\nFailed to accept connection.")
+			os.Exit(1)
 		}
 		fmt.Println("connected.")
 		defer layer.Close()

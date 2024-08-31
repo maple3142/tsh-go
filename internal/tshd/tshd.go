@@ -45,7 +45,8 @@ func Run(secret string, host string, port int, delay int, runAsDaemon bool) {
 		addr := fmt.Sprintf(":%d", port)
 		ln, err := pel.Listen(addr, secret, true)
 		if err != nil {
-			os.Exit(0)
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 		for {
 			layer, err := ln.Accept()
