@@ -9,6 +9,7 @@ import (
 
 func init() {
 	rootCmd.PersistentFlags().BoolP("help", "", false, "help for this command") // disable `-h` flag
+	rootCmd.Root().CompletionOptions.HiddenDefaultCmd = true                    // hide completion command
 }
 
 var rootCmd = &cobra.Command{
