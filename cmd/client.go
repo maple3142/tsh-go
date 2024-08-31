@@ -8,10 +8,10 @@ import (
 )
 
 func init() {
-	clientCmd.PersistentFlags().StringVarP(&clientSecret, "secret", "s", "konpeko", "Pre-shared secret for encryption")
+	clientCmd.PersistentFlags().StringVarP(&clientSecret, "secret", "s", defaultSecret, "Pre-shared secret for encryption")
 	clientCmd.PersistentFlags().StringVarP(&clientHost, "host", "h", "", "Target host, use 'cb' for connect-back mode")
 	clientCmd.MarkPersistentFlagRequired("host")
-	clientCmd.PersistentFlags().IntVarP(&clientPort, "port", "p", 2413, "Target port")
+	clientCmd.PersistentFlags().IntVarP(&clientPort, "port", "p", defaultPort, "Target port")
 	clientCmd.AddCommand(clientKillCmd)
 	clientCmd.AddCommand(clientGetCmd)
 	clientCmd.AddCommand(clientPutCmd)

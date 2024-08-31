@@ -7,9 +7,9 @@ import (
 )
 
 func init() {
-	serverCmd.PersistentFlags().StringVarP(&serverSecret, "secret", "s", "konpeko", "Pre-shared secret for encryption")
+	serverCmd.PersistentFlags().StringVarP(&serverSecret, "secret", "s", defaultSecret, "Pre-shared secret for encryption")
 	serverCmd.PersistentFlags().StringVarP(&serverConnectBackHost, "cbhost", "c", "", "Connect-back host")
-	serverCmd.PersistentFlags().IntVarP(&serverPort, "port", "p", 2413, "Target port")
+	serverCmd.PersistentFlags().IntVarP(&serverPort, "port", "p", defaultPort, "Target port")
 	serverCmd.PersistentFlags().IntVarP(&serverConnectBackDelay, "delay", "", 5, "Connect-back delay")
 	serverCmd.PersistentFlags().BoolVarP(&serverIsDaemon, "daemon", "d", false, "Run as daemon")
 	rootCmd.AddCommand(serverCmd)
