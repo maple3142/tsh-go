@@ -8,6 +8,7 @@ const (
 	Ctrsize        = 4
 	Digestsize     = 20
 
+	Kill     = 0
 	GetFile  = 1
 	PutFile  = 2
 	RunShell = 3

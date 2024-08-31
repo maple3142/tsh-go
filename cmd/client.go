@@ -12,6 +12,7 @@ func init() {
 	clientCmd.PersistentFlags().StringVarP(&clientHost, "host", "h", "", "Target host, use 'cb' for connect-back mode")
 	clientCmd.MarkPersistentFlagRequired("host")
 	clientCmd.PersistentFlags().IntVarP(&clientPort, "port", "p", 2413, "Target port")
+	clientCmd.AddCommand(clientKillCmd)
 	clientCmd.AddCommand(clientGetCmd)
 	clientCmd.AddCommand(clientPutCmd)
 	clientSocks5Cmd.Flags().StringVarP(&clientSocks5Addr, "sock", "a", "localhost:9050", "Listen address for SOCKS5 proxy")
@@ -40,6 +41,14 @@ Examples:
 	},
 }
 
+var clientKillCmd = &cobra.Command{
+	Use:   "kill",
+	Args:  cobra.NoArgs,
+	Short: "Kill remote server",
+	Run: func(cmd *cobra.Command, args []string) {
+		client.Run([]byte(clientSecret), clientHost, clientPort, clientSocks5Addr, constants.Kill, args)
+	},
+}
 var clientGetCmd = &cobra.Command{
 	Use:   "get <source-file> <dest-dir>",
 	Args:  cobra.ExactArgs(2),

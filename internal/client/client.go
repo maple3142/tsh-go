@@ -69,6 +69,10 @@ func Run(secret []byte, host string, port int, socks5addr string, mode uint8, ar
 		}
 	}
 	switch mode {
+	case constants.Kill:
+		layer := waitForConnection()
+		layer.Close()
+		fmt.Println("Server killed.")
 	case constants.RunShell:
 		handleRunShell(waitForConnection, command)
 	case constants.GetFile:

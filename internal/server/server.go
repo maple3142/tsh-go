@@ -85,6 +85,8 @@ func handleGeneric(layer *pel.PktEncLayer) {
 		return
 	}
 	switch buffer[0] {
+	case constants.Kill:
+		os.Exit(0)
 	case constants.GetFile:
 		handleGetFile(layer)
 	case constants.PutFile:
