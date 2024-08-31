@@ -1,7 +1,7 @@
 //go:build windows
 // +build windows
 
-package tshd
+package server
 
 import "github.com/gonutz/ide/w32"
 

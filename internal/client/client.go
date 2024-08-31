@@ -1,4 +1,4 @@
-package tsh
+package client
 
 import (
 	"fmt"

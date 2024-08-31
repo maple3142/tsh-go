@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"tsh-go/internal/tshd"
+	"tsh-go/internal/server"
 
 	"github.com/spf13/cobra"
 )
@@ -31,6 +31,6 @@ Examples:
   tsh server
   tsh server -s hello -p 1337`,
 	Run: func(cmd *cobra.Command, args []string) {
-		tshd.Run(serverSecret, serverConnectBackHost, serverPort, serverConnectBackDelay, serverIsDaemon)
+		server.Run(serverSecret, serverConnectBackHost, serverPort, serverConnectBackDelay, serverIsDaemon)
 	},
 }

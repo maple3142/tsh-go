@@ -1,4 +1,4 @@
-package tshd
+package server
 
 import (
 	"fmt"

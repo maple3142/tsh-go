@@ -1,8 +1,8 @@
 package cmd
 
 import (
+	"tsh-go/internal/client"
 	"tsh-go/internal/constants"
-	"tsh-go/internal/tsh"
 
 	"github.com/spf13/cobra"
 )
@@ -33,7 +33,7 @@ Examples:
   tsh client -h cb -p 1337
   tsh client -h 127.0.0.1 -s hello 'ls -la /'`,
 	Run: func(cmd *cobra.Command, args []string) {
-		tsh.Run(clientSecret, clientHost, clientPort, constants.RunShell, args)
+		client.Run(clientSecret, clientHost, clientPort, constants.RunShell, args)
 	},
 }
 
@@ -42,7 +42,7 @@ var clientGetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	Short: "Get file from remote",
 	Run: func(cmd *cobra.Command, args []string) {
-		tsh.Run(clientSecret, clientHost, clientPort, constants.GetFile, args)
+		client.Run(clientSecret, clientHost, clientPort, constants.GetFile, args)
 	},
 }
 var clientPutCmd = &cobra.Command{
@@ -50,6 +50,6 @@ var clientPutCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	Short: "Put local file to remote",
 	Run: func(cmd *cobra.Command, args []string) {
-		tsh.Run(clientSecret, clientHost, clientPort, constants.PutFile, args)
+		client.Run(clientSecret, clientHost, clientPort, constants.PutFile, args)
 	},
 }
