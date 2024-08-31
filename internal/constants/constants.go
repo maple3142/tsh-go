@@ -1,8 +1,10 @@
 package constants
 
+import "golang.org/x/crypto/chacha20poly1305"
+
 const (
-	Bufsize        = 65536       // pad(length || data)
-	MaxMessagesize = Bufsize - 2 // 2 bytes for length
+	Bufsize        = 65535 // max 16-bit unsigned integer
+	MaxMessagesize = Bufsize - chacha20poly1305.NonceSize - chacha20poly1305.Overhead
 	Ctrsize        = 4
 	Digestsize     = 20
 

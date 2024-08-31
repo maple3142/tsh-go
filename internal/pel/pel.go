@@ -1,32 +1,32 @@
 package pel
 
 import (
-	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/binary"
 	"fmt"
-	"hash"
 	"net"
 	"time"
 
 	"tsh-go/internal/constants"
+
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 // Packet Encryption Layer
 type PktEncLayer struct {
 	conn          net.Conn
 	secret        []byte
-	sendEncrypter cipher.BlockMode
-	recvDecrypter cipher.BlockMode
+	sendEncrypter cipher.AEAD
+	recvDecrypter cipher.AEAD
 	sendPktCtr    uint
 	recvPktCtr    uint
-	sendHmac      hash.Hash
-	recvHmac      hash.Hash
-	readBuffer    []byte
-	writeBuffer   []byte
+	readBuffer    []byte // used for avoid allocation
+	writeBuffer   []byte // used for avoid allocation
+	tmpBuffer     []byte // used for store remaining data if the read buffer is not enough
 }
 
 // Packet Encryption Layer Listener
@@ -55,14 +55,15 @@ func NewPktEncLayer(conn net.Conn, secret []byte) (*PktEncLayer, error) {
 		secret:      secret,
 		sendPktCtr:  0,
 		recvPktCtr:  0,
-		readBuffer:  make([]byte, constants.Bufsize+constants.Ctrsize+constants.Digestsize),
-		writeBuffer: make([]byte, constants.Bufsize+constants.Ctrsize+constants.Digestsize),
+		readBuffer:  make([]byte, 2+constants.Bufsize),
+		writeBuffer: make([]byte, 2+constants.Bufsize),
+		tmpBuffer:   nil,
 	}
 	return layer, nil
 }
 
 func NewPelError(err int) error {
-	return fmt.Errorf("%d", err)
+	return fmt.Errorf("PelError(%d)", err)
 }
 
 func Listen(address string, secret []byte, isServer bool) (*PktEncLayerListener, error) {
@@ -119,7 +120,7 @@ func Dial(address string, secret []byte, isServer bool) (l *PktEncLayer, err err
 }
 
 func (layer *PktEncLayer) hashKey(iv []byte) []byte {
-	h := hmac.New(sha1.New, []byte(layer.secret))
+	h := hmac.New(sha256.New, []byte(layer.secret))
 	h.Write(iv)
 	return h.Sum(nil)
 }
@@ -130,29 +131,27 @@ func (layer *PktEncLayer) hashKey(iv []byte) []byte {
 func (layer *PktEncLayer) Handshake(isServer bool) error {
 	timeout := time.Duration(constants.HandshakeRWTimeout) * time.Second
 	if isServer {
-		buffer := make([]byte, 32)
-		if err := layer.readConnUntilFilledTimeout(buffer, timeout); err != nil {
+		randomness := make([]byte, 32)
+		if err := layer.readConnUntilFilledTimeout(randomness, timeout); err != nil {
 			return err
 		}
-		iv1 := buffer[16:]
-		iv2 := buffer[:16]
+		rand1 := randomness[:16]
+		rand2 := randomness[16:]
 
 		var key []byte
-		var block cipher.Block
+		var aead cipher.AEAD
 
-		key = layer.hashKey(iv1)
-		block, _ = aes.NewCipher(key[:16])
-		layer.sendEncrypter = cipher.NewCBCEncrypter(block, iv1[:16])
-		layer.sendHmac = hmac.New(sha1.New, key)
+		key = layer.hashKey(rand1)
+		aead, _ = chacha20poly1305.New(key)
+		layer.sendEncrypter = aead
 
-		key = layer.hashKey(iv2)
-		block, _ = aes.NewCipher(key[:16])
-		layer.recvDecrypter = cipher.NewCBCDecrypter(block, iv2[:16])
-		layer.recvHmac = hmac.New(sha1.New, key)
+		key = layer.hashKey(rand2)
+		aead, _ = chacha20poly1305.New(key)
+		layer.recvDecrypter = aead
 
-		n, err := layer.ReadTimeout(buffer[:16], timeout)
+		n, err := layer.ReadTimeout(randomness[:16], timeout)
 		if n != 16 || err != nil ||
-			subtle.ConstantTimeCompare(buffer[:16], constants.Challenge) != 1 {
+			subtle.ConstantTimeCompare(randomness[:16], constants.Challenge) != 1 {
 			return NewPelError(constants.PelWrongChallenge)
 		}
 
@@ -165,28 +164,28 @@ func (layer *PktEncLayer) Handshake(isServer bool) error {
 		}
 		return nil
 	} else {
-		iv := make([]byte, 32)
-		rand.Read(iv)
+		randomness := make([]byte, 32)
+		rand.Read(randomness)
 		layer.conn.SetWriteDeadline(
 			time.Now().Add(time.Duration(constants.HandshakeRWTimeout) * time.Second))
-		n, err := layer.conn.Write(iv)
+		n, err := layer.conn.Write(randomness)
 		layer.conn.SetWriteDeadline(time.Time{})
 		if n != 32 || err != nil {
 			return NewPelError(constants.PelFailure)
 		}
+		rand1 := randomness[:16]
+		rand2 := randomness[16:]
 
 		var key []byte
-		var block cipher.Block
+		var aead cipher.AEAD
 
-		key = layer.hashKey(iv[:16])
-		block, _ = aes.NewCipher(key[:16])
-		layer.sendEncrypter = cipher.NewCBCEncrypter(block, iv[:16])
-		layer.sendHmac = hmac.New(sha1.New, key)
+		key = layer.hashKey(rand2)
+		aead, _ = chacha20poly1305.New(key)
+		layer.sendEncrypter = aead
 
-		key = layer.hashKey(iv[16:])
-		block, _ = aes.NewCipher(key[:16])
-		layer.recvDecrypter = cipher.NewCBCDecrypter(block, iv[16:])
-		layer.recvHmac = hmac.New(sha1.New, key)
+		key = layer.hashKey(rand1)
+		aead, _ = chacha20poly1305.New(key)
+		layer.recvDecrypter = aead
 
 		layer.conn.SetWriteDeadline(
 			time.Now().Add(time.Duration(constants.HandshakeRWTimeout) * time.Second))
@@ -216,48 +215,58 @@ func (layer *PktEncLayer) Write(p []byte) (int, error) {
 	return layer.write(p[:min(len(p), constants.MaxMessagesize)])
 }
 
+// packet format
+// | length (2 bytes) | nonce (12 bytes) | encrypted data |
+//                    | <-         length bytes        -> |
+
 func (layer *PktEncLayer) write(p []byte) (int, error) {
 	length := len(p)
 	if length <= 0 || length > constants.Bufsize {
 		return 0, NewPelError(constants.PelBadMsgLength)
 	}
 
-	buffer := layer.writeBuffer
-	buffer[0] = byte((length >> 8) & 0xFF)
-	buffer[1] = byte(length & 0xFF)
-	copy(buffer[2:], p)
-
-	blkLength := 2 + length
-	padding := 16 - (blkLength & 0x0F)
-	if (blkLength & 0x0F) != 0 {
-		blkLength += padding
+	data_length := chacha20poly1305.NonceSize + length + chacha20poly1305.Overhead
+	if data_length > (1 << 16) {
+		return 0, NewPelError(constants.PelBadMsgLength)
 	}
+	pkt_length := 2 + data_length
+	buffer := layer.writeBuffer[0:pkt_length]
+	binary.LittleEndian.PutUint16(buffer, uint16(data_length))
 
-	layer.sendEncrypter.CryptBlocks(buffer[:blkLength], buffer[:blkLength])
+	additionalData := make([]byte, 4)
+	binary.LittleEndian.PutUint32(additionalData, uint32(layer.sendPktCtr))
 
-	buffer[blkLength] = byte(layer.sendPktCtr << 24 & 0xFF)
-	buffer[blkLength+1] = byte(layer.sendPktCtr << 16 & 0xFF)
-	buffer[blkLength+2] = byte(layer.sendPktCtr << 8 & 0xFF)
-	buffer[blkLength+3] = byte(layer.sendPktCtr & 0xFF)
+	nonce := buffer[2 : 2+chacha20poly1305.NonceSize]
+	rand.Read(nonce)
 
-	layer.sendHmac.Reset()
-	layer.sendHmac.Write(buffer[:blkLength+4])
-	digest := layer.sendHmac.Sum(nil)
+	layer.sendEncrypter.Seal(nonce, nonce, p, additionalData) // append ciphertext (with tag) to nonce
 
-	copy(buffer[blkLength:], digest)
-	total := 0
-	for total < blkLength+constants.Digestsize {
-		n, err := layer.conn.Write(buffer[total : blkLength+constants.Digestsize])
+	idx := 0
+	for idx < pkt_length {
+		n, err := layer.conn.Write(buffer[idx:pkt_length])
 		if err != nil {
 			return 0, err
 		}
-		total += n
+		idx += n
 	}
 	layer.sendPktCtr++
 	return length, nil
 }
 
 func (layer *PktEncLayer) Read(p []byte) (int, error) {
+	if layer.tmpBuffer != nil {
+		n := copy(p, layer.tmpBuffer)
+		if n < len(layer.tmpBuffer) {
+			layer.tmpBuffer = layer.tmpBuffer[n:]
+			return n, nil
+		}
+		layer.tmpBuffer = nil
+		if n < len(p) {
+			n2, err := layer.read(p[n:])
+			return n + n2, err
+		}
+		return n, nil
+	}
 	return layer.read(p)
 }
 
@@ -269,47 +278,40 @@ func (layer *PktEncLayer) ReadTimeout(p []byte, timeout time.Duration) (int, err
 }
 
 func (layer *PktEncLayer) read(p []byte) (int, error) {
-	firstblock := make([]byte, 16)
 	buffer := layer.readBuffer
 
-	if err := layer.readConnUntilFilled(buffer[:16]); err != nil {
+	if err := layer.readConnUntilFilled(buffer[:2]); err != nil {
 		return 0, err
 	}
 
-	layer.recvDecrypter.CryptBlocks(firstblock, buffer[:16])
-	length := int(firstblock[0])<<8 + int(firstblock[1])
-	if length <= 0 || length > constants.Bufsize || length > len(p) {
+	data_length := int(binary.LittleEndian.Uint16(buffer))
+	if data_length <= 0 || data_length > constants.Bufsize {
 		return 0, NewPelError(constants.PelBadMsgLength)
 	}
 
-	blkLength := 2 + length
-	if (blkLength & 0x0F) != 0 {
-		blkLength += 16 - (blkLength & 0x0F)
+	data := layer.readBuffer[0:data_length]
+
+	if err := layer.readConnUntilFilled(data); err != nil {
+		return 0, NewPelError(constants.PelConnClosed)
 	}
 
-	if err := layer.readConnUntilFilled(buffer[16 : blkLength+constants.Digestsize]); err != nil {
-		return 0, err
-	}
+	additionalData := make([]byte, 4)
+	binary.LittleEndian.PutUint32(additionalData, uint32(layer.recvPktCtr))
 
-	hmac := append([]byte{}, buffer[blkLength:blkLength+constants.Digestsize]...)
-	buffer[blkLength] = byte(layer.recvPktCtr << 24 & 0xFF)
-	buffer[blkLength+1] = byte(layer.recvPktCtr << 16 & 0xFF)
-	buffer[blkLength+2] = byte(layer.recvPktCtr << 8 & 0xFF)
-	buffer[blkLength+3] = byte(layer.recvPktCtr & 0xFF)
+	nonce := data[0:chacha20poly1305.NonceSize]
+	ciphertext := data[chacha20poly1305.NonceSize:data_length]
 
-	layer.recvHmac.Reset()
-	layer.recvHmac.Write(buffer[:blkLength+4])
-	digest := layer.recvHmac.Sum(nil)
-
-	if subtle.ConstantTimeCompare(hmac, digest) != 1 {
+	pt, err := layer.recvDecrypter.Open(ciphertext[:0], nonce, ciphertext, additionalData)
+	if err != nil {
 		return 0, NewPelError(constants.PelCorruptedData)
 	}
+	n_copied := copy(p, pt)
+	if n_copied < len(pt) {
+		layer.tmpBuffer = pt[len(p):]
+	}
 
-	layer.recvDecrypter.CryptBlocks(buffer[16:blkLength], buffer[16:blkLength])
-	copy(buffer, firstblock)
-	n := copy(p, buffer[2:2+length])
 	layer.recvPktCtr++
-	return n, nil
+	return n_copied, nil
 }
 
 func (layer *PktEncLayer) readConnUntilFilled(p []byte) error {
