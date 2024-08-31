@@ -85,7 +85,7 @@ func Run(secret string, host string, port int, mode uint8, args []string) {
 }
 
 func handleGetFile(layer *pel.PktEncLayer, srcfile, dstdir string) {
-	buffer := make([]byte, constants.Bufsize)
+	buffer := make([]byte, constants.MaxMessagesize)
 
 	basename := strings.ReplaceAll(srcfile, "\\", "/")
 	basename = filepath.Base(filepath.FromSlash(basename))
@@ -112,7 +112,7 @@ func handleGetFile(layer *pel.PktEncLayer, srcfile, dstdir string) {
 }
 
 func handlePutFile(layer *pel.PktEncLayer, srcfile, dstdir string) {
-	buffer := make([]byte, constants.Bufsize)
+	buffer := make([]byte, constants.MaxMessagesize)
 	f, err := os.Open(srcfile)
 	if err != nil {
 		return
@@ -178,8 +178,8 @@ func handleRunShell(layer *pel.PktEncLayer, command string) {
 		return
 	}
 
-	buffer := make([]byte, constants.Bufsize)
-	buffer2 := make([]byte, constants.Bufsize)
+	buffer := make([]byte, constants.MaxMessagesize)
+	buffer2 := make([]byte, constants.MaxMessagesize)
 	go func() {
 		_, _ = utils.CopyBuffer(os.Stdout, layer, buffer)
 		layer.Close()

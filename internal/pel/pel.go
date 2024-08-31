@@ -1,13 +1,12 @@
 package pel
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
-	"errors"
+	"crypto/subtle"
 	"fmt"
 	"hash"
 	"net"
@@ -56,14 +55,14 @@ func NewPktEncLayer(conn net.Conn, secret string) (*PktEncLayer, error) {
 		secret:      secret,
 		sendPktCtr:  0,
 		recvPktCtr:  0,
-		readBuffer:  make([]byte, constants.Bufsize+16+20),
-		writeBuffer: make([]byte, constants.Bufsize+16+20),
+		readBuffer:  make([]byte, constants.Bufsize+constants.Ctrsize+constants.Digestsize),
+		writeBuffer: make([]byte, constants.Bufsize+constants.Ctrsize+constants.Digestsize),
 	}
 	return layer, nil
 }
 
 func NewPelError(err int) error {
-	return errors.New(fmt.Sprintf("%d", err))
+	return fmt.Errorf("%d", err)
 }
 
 func Listen(address, secret string, isServer bool) (*PktEncLayerListener, error) {
@@ -120,8 +119,7 @@ func Dial(address, secret string, isServer bool) (l *PktEncLayer, err error) {
 }
 
 func (layer *PktEncLayer) hashKey(iv []byte) []byte {
-	h := sha1.New()
-	h.Write([]byte(layer.secret))
+	h := hmac.New(sha1.New, []byte(layer.secret))
 	h.Write(iv)
 	return h.Sum(nil)
 }
@@ -132,12 +130,12 @@ func (layer *PktEncLayer) hashKey(iv []byte) []byte {
 func (layer *PktEncLayer) Handshake(isServer bool) error {
 	timeout := time.Duration(constants.HandshakeRWTimeout) * time.Second
 	if isServer {
-		buffer := make([]byte, 40)
+		buffer := make([]byte, 32)
 		if err := layer.readConnUntilFilledTimeout(buffer, timeout); err != nil {
 			return err
 		}
-		iv1 := buffer[20:]
-		iv2 := buffer[:20]
+		iv1 := buffer[16:]
+		iv2 := buffer[:16]
 
 		var key []byte
 		var block cipher.Block
@@ -154,7 +152,7 @@ func (layer *PktEncLayer) Handshake(isServer bool) error {
 
 		n, err := layer.ReadTimeout(buffer[:16], timeout)
 		if n != 16 || err != nil ||
-			bytes.Compare(buffer[:16], constants.Challenge) != 0 {
+			subtle.ConstantTimeCompare(buffer[:16], constants.Challenge) != 1 {
 			return NewPelError(constants.PelWrongChallenge)
 		}
 
@@ -167,27 +165,27 @@ func (layer *PktEncLayer) Handshake(isServer bool) error {
 		}
 		return nil
 	} else {
-		iv := make([]byte, 40)
+		iv := make([]byte, 32)
 		rand.Read(iv)
 		layer.conn.SetWriteDeadline(
 			time.Now().Add(time.Duration(constants.HandshakeRWTimeout) * time.Second))
 		n, err := layer.conn.Write(iv)
 		layer.conn.SetWriteDeadline(time.Time{})
-		if n != 40 || err != nil {
+		if n != 32 || err != nil {
 			return NewPelError(constants.PelFailure)
 		}
 
 		var key []byte
 		var block cipher.Block
 
-		key = layer.hashKey(iv[:20])
+		key = layer.hashKey(iv[:16])
 		block, _ = aes.NewCipher(key[:16])
 		layer.sendEncrypter = cipher.NewCBCEncrypter(block, iv[:16])
 		layer.sendHmac = hmac.New(sha1.New, key)
 
-		key = layer.hashKey(iv[20:])
+		key = layer.hashKey(iv[16:])
 		block, _ = aes.NewCipher(key[:16])
-		layer.recvDecrypter = cipher.NewCBCDecrypter(block, iv[20:36])
+		layer.recvDecrypter = cipher.NewCBCDecrypter(block, iv[16:])
 		layer.recvHmac = hmac.New(sha1.New, key)
 
 		layer.conn.SetWriteDeadline(
@@ -203,7 +201,7 @@ func (layer *PktEncLayer) Handshake(isServer bool) error {
 		if n != 16 || err != nil {
 			return NewPelError(constants.PelFailure)
 		}
-		if bytes.Compare(constants.Challenge, challenge) != 0 {
+		if subtle.ConstantTimeCompare(constants.Challenge, challenge) != 1 {
 			return NewPelError(constants.PelWrongChallenge)
 		}
 		return nil
@@ -254,10 +252,10 @@ func (layer *PktEncLayer) write(p []byte) (int, error) {
 	layer.sendHmac.Write(buffer[:blkLength+4])
 	digest := layer.sendHmac.Sum(nil)
 
-	copy(buffer[blkLength:], digest[:20])
+	copy(buffer[blkLength:], digest)
 	total := 0
-	for total < blkLength+20 {
-		n, err := layer.conn.Write(buffer[total : blkLength+20])
+	for total < blkLength+constants.Digestsize {
+		n, err := layer.conn.Write(buffer[total : blkLength+constants.Digestsize])
 		if err != nil {
 			return 0, err
 		}
@@ -297,11 +295,11 @@ func (layer *PktEncLayer) read(p []byte) (int, error) {
 		blkLength += 16 - (blkLength & 0x0F)
 	}
 
-	if err := layer.readConnUntilFilled(buffer[16 : blkLength+20]); err != nil {
+	if err := layer.readConnUntilFilled(buffer[16 : blkLength+constants.Digestsize]); err != nil {
 		return 0, err
 	}
 
-	hmac := append([]byte{}, buffer[blkLength:blkLength+20]...)
+	hmac := append([]byte{}, buffer[blkLength:blkLength+constants.Digestsize]...)
 	buffer[blkLength] = byte(layer.recvPktCtr << 24 & 0xFF)
 	buffer[blkLength+1] = byte(layer.recvPktCtr << 16 & 0xFF)
 	buffer[blkLength+2] = byte(layer.recvPktCtr << 8 & 0xFF)
@@ -311,7 +309,7 @@ func (layer *PktEncLayer) read(p []byte) (int, error) {
 	layer.recvHmac.Write(buffer[:blkLength+4])
 	digest := layer.recvHmac.Sum(nil)
 
-	if bytes.Compare(hmac, digest) != 0 {
+	if subtle.ConstantTimeCompare(hmac, digest) != 1 {
 		return 0, NewPelError(constants.PelCorruptedData)
 	}
 
