@@ -8,7 +8,8 @@ import (
 	"tsh-go/internal/constants"
 )
 
-const testSecret = "secrethaha"
+var testSecret = []byte("just some secret")
+
 const testAddress = "127.0.0.1:2333"
 
 func (layer *PktEncLayer) WriteFull(p []byte) (int, error) {

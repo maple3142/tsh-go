@@ -15,7 +15,7 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-func Run(secret string, host string, port int, mode uint8, args []string) {
+func Run(secret []byte, host string, port int, mode uint8, args []string) {
 	var isConnectBack bool
 	var srcfile, dstdir, command string
 

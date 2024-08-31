@@ -18,7 +18,7 @@ import (
 // Packet Encryption Layer
 type PktEncLayer struct {
 	conn          net.Conn
-	secret        string
+	secret        []byte
 	sendEncrypter cipher.BlockMode
 	recvDecrypter cipher.BlockMode
 	sendPktCtr    uint
@@ -32,11 +32,11 @@ type PktEncLayer struct {
 // Packet Encryption Layer Listener
 type PktEncLayerListener struct {
 	listener net.Listener
-	secret   string
+	secret   []byte
 	isServer bool
 }
 
-func NewPktEncLayerListener(address, secret string, isServer bool) (*PktEncLayerListener, error) {
+func NewPktEncLayerListener(address string, secret []byte, isServer bool) (*PktEncLayerListener, error) {
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func NewPktEncLayerListener(address, secret string, isServer bool) (*PktEncLayer
 	return ln, nil
 }
 
-func NewPktEncLayer(conn net.Conn, secret string) (*PktEncLayer, error) {
+func NewPktEncLayer(conn net.Conn, secret []byte) (*PktEncLayer, error) {
 	layer := &PktEncLayer{
 		conn:        conn,
 		secret:      secret,
@@ -65,7 +65,7 @@ func NewPelError(err int) error {
 	return fmt.Errorf("%d", err)
 }
 
-func Listen(address, secret string, isServer bool) (*PktEncLayerListener, error) {
+func Listen(address string, secret []byte, isServer bool) (*PktEncLayerListener, error) {
 	listener, err := NewPktEncLayerListener(address, secret, isServer)
 	return listener, err
 }
@@ -98,7 +98,7 @@ func (ln *PktEncLayerListener) Accept() (l *PktEncLayer, err error) {
 	return layer, nil
 }
 
-func Dial(address, secret string, isServer bool) (l *PktEncLayer, err error) {
+func Dial(address string, secret []byte, isServer bool) (l *PktEncLayer, err error) {
 	defer func() {
 		if _err := recover(); _err != nil {
 			l = nil

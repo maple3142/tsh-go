@@ -31,6 +31,6 @@ Examples:
   tsh server
   tsh server -s hello -p 1337`,
 	Run: func(cmd *cobra.Command, args []string) {
-		server.Run(serverSecret, serverConnectBackHost, serverPort, serverConnectBackDelay, serverIsDaemon)
+		server.Run([]byte(serverSecret), serverConnectBackHost, serverPort, serverConnectBackDelay, serverIsDaemon)
 	},
 }
