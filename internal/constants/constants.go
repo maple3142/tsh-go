@@ -5,8 +5,7 @@ import "golang.org/x/crypto/chacha20poly1305"
 const (
 	Bufsize        = 65535 // max 16-bit unsigned integer
 	MaxMessagesize = Bufsize - chacha20poly1305.NonceSize - chacha20poly1305.Overhead
-	Ctrsize        = 4
-	Digestsize     = 20
+	Digestsize     = 32
 
 	Kill     = 0
 	GetFile  = 1

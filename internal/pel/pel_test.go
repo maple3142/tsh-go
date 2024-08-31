@@ -40,7 +40,7 @@ func (layer *PktEncLayer) ReadFull(p []byte) error {
 }
 
 func runProtocolTest(t *testing.T, fn func(*PktEncLayer, *PktEncLayer)) {
-	listener, err := Listen(testAddress, testSecret, true)
+	listener, err := Listen(testAddress, testSecret, false)
 	if err != nil {
 		t.Fatal("listen", err)
 	}
@@ -54,7 +54,7 @@ func runProtocolTest(t *testing.T, fn func(*PktEncLayer, *PktEncLayer)) {
 		}
 		ch <- nil
 	}()
-	client, err = Dial(testAddress, testSecret, false)
+	client, err = Dial(testAddress, testSecret, true)
 	if err != nil {
 		t.Fatal("dial", err)
 	}

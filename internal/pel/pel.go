@@ -14,6 +14,7 @@ import (
 	"tsh-go/internal/constants"
 
 	"golang.org/x/crypto/chacha20poly1305"
+	"golang.org/x/crypto/curve25519"
 )
 
 // Packet Encryption Layer
@@ -63,7 +64,11 @@ func NewPktEncLayer(conn net.Conn, secret []byte) (*PktEncLayer, error) {
 }
 
 func NewPelError(err int) error {
-	return fmt.Errorf("PelError(%d)", err)
+	return fmt.Errorf("PelError(code=%d)", err)
+}
+
+func NewPelErrorReason(err int, reason string) error {
+	return fmt.Errorf("PelError(code=%d, reason=%v)", err, reason)
 }
 
 func Listen(address string, secret []byte, isInitiator bool) (*PktEncLayerListener, error) {
@@ -119,7 +124,7 @@ func Dial(address string, secret []byte, isInitiator bool) (l *PktEncLayer, err 
 	return layer, nil
 }
 
-func (layer *PktEncLayer) hashKey(iv []byte) []byte {
+func (layer *PktEncLayer) hmac(iv []byte) []byte {
 	h := hmac.New(sha256.New, []byte(layer.secret))
 	h.Write(iv)
 	return h.Sum(nil)
@@ -130,79 +135,97 @@ func (layer *PktEncLayer) hashKey(iv []byte) []byte {
 // takes more than HandshakeRWTimeout (default: 3) seconds
 func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 	timeout := time.Duration(constants.HandshakeRWTimeout) * time.Second
+	// generate key pair
+	my_sk := make([]byte, curve25519.ScalarSize)
+	rand.Read(my_sk)
+	my_pk, err := curve25519.X25519(my_sk, curve25519.Basepoint)
+	if err != nil {
+		return NewPelErrorReason(constants.PelFailure, "Failed to generate key pair")
+	}
+	pk_and_digest := append(my_pk, layer.hmac(my_pk)...)
 	if !isInitiator {
-		randomness := make([]byte, 32)
-		if err := layer.readConnUntilFilledTimeout(randomness, timeout); err != nil {
-			return err
+		// receive public key
+		recvbuf := make([]byte, curve25519.PointSize+constants.Digestsize)
+		err = layer.readConnUntilFilledTimeout(recvbuf, timeout)
+		if err != nil {
+			return NewPelErrorReason(constants.PelFailure, "Initiator failed to receive public key and digest")
 		}
+		remote_pk := recvbuf[:curve25519.PointSize]
+		digest := recvbuf[curve25519.PointSize:]
+		if subtle.ConstantTimeCompare(digest, layer.hmac(remote_pk)) != 1 {
+			return NewPelErrorReason(constants.PelFailure, "Public key digest verification failed")
+		}
+
+		// send public key and digest
+		layer.conn.SetWriteDeadline(
+			time.Now().Add(time.Duration(constants.HandshakeRWTimeout) * time.Second))
+		n, err := layer.conn.Write(pk_and_digest)
+		layer.conn.SetWriteDeadline(time.Time{})
+		if n != curve25519.ScalarSize+constants.Digestsize || err != nil {
+			return NewPelErrorReason(constants.PelFailure, "Responder failed to send public key")
+		}
+
+		// derive shared secret
+		shared_secret, err := curve25519.X25519(my_sk, remote_pk)
+		if err != nil {
+			return NewPelErrorReason(constants.PelFailure, "Failed to derive shared secret")
+		}
+		randomness := layer.hmac(shared_secret)
 		rand1 := randomness[:16]
 		rand2 := randomness[16:]
 
 		var key []byte
 		var aead cipher.AEAD
 
-		key = layer.hashKey(rand1)
+		key = layer.hmac(rand1)
 		aead, _ = chacha20poly1305.New(key)
 		layer.sendEncrypter = aead
 
-		key = layer.hashKey(rand2)
+		key = layer.hmac(rand2)
 		aead, _ = chacha20poly1305.New(key)
 		layer.recvDecrypter = aead
-
-		n, err := layer.ReadTimeout(randomness[:16], timeout)
-		if n != 16 || err != nil ||
-			subtle.ConstantTimeCompare(randomness[:16], constants.Challenge) != 1 {
-			return NewPelError(constants.PelWrongChallenge)
-		}
-
-		layer.conn.SetWriteDeadline(
-			time.Now().Add(time.Duration(constants.HandshakeRWTimeout) * time.Second))
-		n, err = layer.Write(constants.Challenge)
-		layer.conn.SetWriteDeadline(time.Time{})
-		if n != 16 || err != nil {
-			return NewPelError(constants.PelFailure)
-		}
 		return nil
 	} else {
-		randomness := make([]byte, 32)
-		rand.Read(randomness)
+		// send public key and digest
 		layer.conn.SetWriteDeadline(
 			time.Now().Add(time.Duration(constants.HandshakeRWTimeout) * time.Second))
-		n, err := layer.conn.Write(randomness)
+		n, err := layer.conn.Write(pk_and_digest)
 		layer.conn.SetWriteDeadline(time.Time{})
-		if n != 32 || err != nil {
-			return NewPelError(constants.PelFailure)
+		if n != curve25519.ScalarSize+constants.Digestsize || err != nil {
+			return NewPelErrorReason(constants.PelFailure, "Responder failed to send public key")
 		}
+
+		// receive public key
+		recvbuf := make([]byte, curve25519.PointSize+constants.Digestsize)
+		err = layer.readConnUntilFilledTimeout(recvbuf, timeout)
+		if err != nil {
+			return NewPelErrorReason(constants.PelFailure, "Initiator failed to receive public key and digest")
+		}
+		remote_pk := recvbuf[:curve25519.PointSize]
+		digest := recvbuf[curve25519.PointSize:]
+		if subtle.ConstantTimeCompare(digest, layer.hmac(remote_pk)) != 1 {
+			return NewPelErrorReason(constants.PelFailure, "Public key digest verification failed")
+		}
+
+		// derive shared secret
+		shared_secret, err := curve25519.X25519(my_sk, remote_pk)
+		if err != nil {
+			return NewPelErrorReason(constants.PelFailure, "Failed to derive shared secret")
+		}
+		randomness := layer.hmac(shared_secret)
 		rand1 := randomness[:16]
 		rand2 := randomness[16:]
 
 		var key []byte
 		var aead cipher.AEAD
 
-		key = layer.hashKey(rand2)
+		key = layer.hmac(rand2)
 		aead, _ = chacha20poly1305.New(key)
 		layer.sendEncrypter = aead
 
-		key = layer.hashKey(rand1)
+		key = layer.hmac(rand1)
 		aead, _ = chacha20poly1305.New(key)
 		layer.recvDecrypter = aead
-
-		layer.conn.SetWriteDeadline(
-			time.Now().Add(time.Duration(constants.HandshakeRWTimeout) * time.Second))
-		n, err = layer.Write(constants.Challenge)
-		layer.conn.SetWriteDeadline(time.Time{})
-		if n != 16 || err != nil {
-			return NewPelError(constants.PelFailure)
-		}
-
-		challenge := make([]byte, 16)
-		n, err = layer.ReadTimeout(challenge, timeout)
-		if n != 16 || err != nil {
-			return NewPelError(constants.PelFailure)
-		}
-		if subtle.ConstantTimeCompare(constants.Challenge, challenge) != 1 {
-			return NewPelError(constants.PelWrongChallenge)
-		}
 		return nil
 	}
 }
