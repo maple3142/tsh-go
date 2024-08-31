@@ -68,7 +68,7 @@ var clientPutCmd = &cobra.Command{
 var clientSocks5Cmd = &cobra.Command{
 	Use:   "socks5 ",
 	Args:  cobra.NoArgs,
-	Short: "Start a local socks5 proxy",
+	Short: "Start a local socks5 proxy (not recommended to be used in connect-back mode)",
 	Run: func(cmd *cobra.Command, args []string) {
 		client.Run([]byte(clientSecret), clientHost, clientPort, clientSocks5Addr, constants.SOCKS5, args)
 	},
