@@ -47,7 +47,7 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 
 	if host == "" {
 		addr := fmt.Sprintf(":%d", port)
-		ln, err := pel.Listen(addr, secret, true)
+		ln, err := pel.Listen(addr, secret, false)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)

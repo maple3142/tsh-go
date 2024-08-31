@@ -31,20 +31,20 @@ type PktEncLayer struct {
 
 // Packet Encryption Layer Listener
 type PktEncLayerListener struct {
-	listener net.Listener
-	secret   []byte
-	isServer bool
+	listener    net.Listener
+	secret      []byte
+	isInitiator bool
 }
 
-func NewPktEncLayerListener(address string, secret []byte, isServer bool) (*PktEncLayerListener, error) {
+func NewPktEncLayerListener(address string, secret []byte, isInitiator bool) (*PktEncLayerListener, error) {
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, err
 	}
 	ln := &PktEncLayerListener{
-		listener: listener,
-		secret:   secret,
-		isServer: isServer,
+		listener:    listener,
+		secret:      secret,
+		isInitiator: isInitiator,
 	}
 	return ln, nil
 }
@@ -66,8 +66,8 @@ func NewPelError(err int) error {
 	return fmt.Errorf("PelError(%d)", err)
 }
 
-func Listen(address string, secret []byte, isServer bool) (*PktEncLayerListener, error) {
-	listener, err := NewPktEncLayerListener(address, secret, isServer)
+func Listen(address string, secret []byte, isInitiator bool) (*PktEncLayerListener, error) {
+	listener, err := NewPktEncLayerListener(address, secret, isInitiator)
 	return listener, err
 }
 
@@ -91,7 +91,7 @@ func (ln *PktEncLayerListener) Accept() (l *PktEncLayer, err error) {
 		return nil, err
 	}
 	layer, _ := NewPktEncLayer(conn, ln.secret)
-	err = layer.Handshake(ln.isServer)
+	err = layer.Handshake(ln.isInitiator)
 	if err != nil {
 		layer.Close()
 		return nil, err
@@ -99,7 +99,7 @@ func (ln *PktEncLayerListener) Accept() (l *PktEncLayer, err error) {
 	return layer, nil
 }
 
-func Dial(address string, secret []byte, isServer bool) (l *PktEncLayer, err error) {
+func Dial(address string, secret []byte, isInitiator bool) (l *PktEncLayer, err error) {
 	defer func() {
 		if _err := recover(); _err != nil {
 			l = nil
@@ -111,7 +111,7 @@ func Dial(address string, secret []byte, isServer bool) (l *PktEncLayer, err err
 		return nil, err
 	}
 	layer, _ := NewPktEncLayer(conn, secret)
-	err = layer.Handshake(isServer)
+	err = layer.Handshake(isInitiator)
 	if err != nil {
 		layer.Close()
 		return nil, err
@@ -128,9 +128,9 @@ func (layer *PktEncLayer) hashKey(iv []byte) []byte {
 // exchange IV with client and setup the encryption layer
 // return err if the packet read/write operation
 // takes more than HandshakeRWTimeout (default: 3) seconds
-func (layer *PktEncLayer) Handshake(isServer bool) error {
+func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 	timeout := time.Duration(constants.HandshakeRWTimeout) * time.Second
-	if isServer {
+	if !isInitiator {
 		randomness := make([]byte, 32)
 		if err := layer.readConnUntilFilledTimeout(randomness, timeout); err != nil {
 			return err

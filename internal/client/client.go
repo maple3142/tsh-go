@@ -58,7 +58,7 @@ func Run(secret []byte, host string, port int, socks5addr string, mode uint8, ar
 			return layer
 		} else {
 			addr := fmt.Sprintf("%s:%d", host, port)
-			layer, err := pel.Dial(addr, secret, false)
+			layer, err := pel.Dial(addr, secret, true)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to connect to %s:%d\n", host, port)
 				fmt.Fprintf(os.Stderr, "It is possible that the server is not running or the secret is incorrect.\n")
