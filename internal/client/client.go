@@ -3,9 +3,11 @@ package client
 import (
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"tsh-go/internal/constants"
 	"tsh-go/internal/pel"
@@ -15,7 +17,7 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-func Run(secret []byte, host string, port int, mode uint8, args []string) {
+func Run(secret []byte, host string, port int, socks5addr string, mode uint8, args []string) {
 	var isConnectBack bool
 	var srcfile, dstdir, command string
 
@@ -35,54 +37,53 @@ func Run(secret []byte, host string, port int, mode uint8, args []string) {
 		dstdir = args[1]
 	}
 
-	if isConnectBack {
-		// connect back mode
-		addr := fmt.Sprintf(":%d", port)
-		ln, err := pel.Listen(addr, secret, false)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		fmt.Print("Waiting for the server to connect...")
-		layer, err := ln.Accept()
-		ln.Close()
-		if err != nil {
-			fmt.Println("\nFailed to accept connection.")
-			os.Exit(1)
-		}
-		fmt.Println("connected.")
-		defer layer.Close()
-		layer.Write([]byte{mode})
-		switch mode {
-		case constants.RunShell:
-			handleRunShell(layer, command)
-		case constants.GetFile:
-			handleGetFile(layer, srcfile, dstdir)
-		case constants.PutFile:
-			handlePutFile(layer, srcfile, dstdir)
-		}
-	} else {
-		addr := fmt.Sprintf("%s:%d", host, port)
-		layer, err := pel.Dial(addr, secret, false)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to connect to %s:%d\n", host, port)
-			fmt.Fprintf(os.Stderr, "It is possible that the server is not running or the secret is incorrect.\n")
-			os.Exit(0)
-		}
-		defer layer.Close()
-		layer.Write([]byte{mode})
-		switch mode {
-		case constants.RunShell:
-			handleRunShell(layer, command)
-		case constants.GetFile:
-			handleGetFile(layer, srcfile, dstdir)
-		case constants.PutFile:
-			handlePutFile(layer, srcfile, dstdir)
+	waitForConnection := func() *pel.PktEncLayer {
+		if isConnectBack {
+			// connect back mode
+			addr := fmt.Sprintf(":%d", port)
+			ln, err := pel.Listen(addr, secret, false)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			fmt.Print("Waiting for the server to connect...")
+			layer, err := ln.Accept()
+			ln.Close()
+			if err != nil {
+				fmt.Println("\nFailed to accept connection.")
+				os.Exit(1)
+			}
+			fmt.Println("connected.")
+			layer.Write([]byte{mode})
+			return layer
+		} else {
+			addr := fmt.Sprintf("%s:%d", host, port)
+			layer, err := pel.Dial(addr, secret, false)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to connect to %s:%d\n", host, port)
+				fmt.Fprintf(os.Stderr, "It is possible that the server is not running or the secret is incorrect.\n")
+				os.Exit(0)
+			}
+			layer.Write([]byte{mode})
+			return layer
 		}
 	}
+	switch mode {
+	case constants.RunShell:
+		handleRunShell(waitForConnection, command)
+	case constants.GetFile:
+		handleGetFile(waitForConnection, srcfile, dstdir)
+	case constants.PutFile:
+		handlePutFile(waitForConnection, srcfile, dstdir)
+	case constants.SOCKS5:
+		handleSocks5(waitForConnection, socks5addr)
+	}
+
 }
 
-func handleGetFile(layer *pel.PktEncLayer, srcfile, dstdir string) {
+func handleGetFile(waitForConnection func() *pel.PktEncLayer, srcfile, dstdir string) {
+	layer := waitForConnection()
+	defer layer.Close()
 	buffer := make([]byte, constants.MaxMessagesize)
 
 	basename := strings.ReplaceAll(srcfile, "\\", "/")
@@ -109,7 +110,9 @@ func handleGetFile(layer *pel.PktEncLayer, srcfile, dstdir string) {
 	fmt.Print("\nDone.\n")
 }
 
-func handlePutFile(layer *pel.PktEncLayer, srcfile, dstdir string) {
+func handlePutFile(waitForConnection func() *pel.PktEncLayer, srcfile, dstdir string) {
+	layer := waitForConnection()
+	defer layer.Close()
 	buffer := make([]byte, constants.MaxMessagesize)
 	f, err := os.Open(srcfile)
 	if err != nil {
@@ -140,7 +143,9 @@ func handlePutFile(layer *pel.PktEncLayer, srcfile, dstdir string) {
 	fmt.Print("\nDone.\n")
 }
 
-func handleRunShell(layer *pel.PktEncLayer, command string) {
+func handleRunShell(waitForConnection func() *pel.PktEncLayer, command string) {
+	layer := waitForConnection()
+	defer layer.Close()
 	oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		return
@@ -183,4 +188,41 @@ func handleRunShell(layer *pel.PktEncLayer, command string) {
 		layer.Close()
 	}()
 	_, _ = utils.CopyBuffer(layer, os.Stdin, buffer2)
+}
+func handleSocks5(waitForConnection func() *pel.PktEncLayer, socks5addr string) {
+	addr, err := net.ResolveTCPAddr("tcp", socks5addr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println("Socks5 proxy listening at", l.Addr())
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			panic(err)
+		}
+		layer := waitForConnection()
+		fmt.Println("Connection established", conn.RemoteAddr())
+		wg := &sync.WaitGroup{}
+		wg.Add(2)
+		go func() {
+			utils.StreamPipe(layer, conn, make([]byte, 1024))
+			wg.Done()
+		}()
+		go func() {
+			utils.StreamPipe(conn, layer, make([]byte, 1024))
+			wg.Done()
+		}()
+		go func() {
+			wg.Wait()
+			layer.Close()
+			conn.Close()
+			fmt.Println("Connection closed", conn.RemoteAddr())
+		}()
+	}
 }

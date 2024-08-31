@@ -207,8 +207,8 @@ func (layer *PktEncLayer) Handshake(isServer bool) error {
 	}
 }
 
-func (layer *PktEncLayer) Close() {
-	layer.conn.Close()
+func (layer *PktEncLayer) Close() error {
+	return layer.conn.Close()
 }
 
 func (layer *PktEncLayer) Write(p []byte) (int, error) {
@@ -262,7 +262,7 @@ func (layer *PktEncLayer) Read(p []byte) (int, error) {
 		}
 		layer.tmpBuffer = nil
 		if n < len(p) {
-			n2, err := layer.read(p[n:])
+			n2, err := layer.Read(p[n:])
 			return n + n2, err
 		}
 		return n, nil

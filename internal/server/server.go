@@ -2,10 +2,12 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -13,6 +15,8 @@ import (
 	"tsh-go/internal/pel"
 	"tsh-go/internal/pty"
 	"tsh-go/internal/utils"
+
+	"github.com/txthinking/socks5"
 )
 
 func RunInBackground() {
@@ -87,6 +91,8 @@ func handleGeneric(layer *pel.PktEncLayer) {
 		handlePutFile(layer)
 	case constants.RunShell:
 		handleRunShell(layer)
+	case constants.SOCKS5:
+		handleSocks5(layer)
 	}
 }
 
@@ -154,4 +160,43 @@ func handleRunShell(layer *pel.PktEncLayer) {
 		tp.Close()
 	}()
 	utils.CopyBuffer(layer, tp.StdOut(), buffer2)
+}
+
+func handleSocks5(layer *pel.PktEncLayer) {
+	srv, _ := socks5.NewClassicServer("127.0.0.1:9050", "127.0.0.1", "", "", 0, 60)
+	srv.SupportedCommands = []byte{socks5.CmdConnect} // TODO: CmdUDP
+	if err := srv.Negotiate(layer); err != nil {
+		log.Println(err)
+		return
+	}
+	req, err := srv.GetRequest(layer)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	fmt.Println("Request type", req.Cmd)
+	if req.Cmd == socks5.CmdConnect {
+		conn, err := req.Connect(layer)
+		if err != nil {
+			layer.Close()
+			log.Println(err)
+			return
+		}
+		fmt.Println("Connection established", conn.RemoteAddr())
+		wg := &sync.WaitGroup{}
+		wg.Add(2)
+		go func() {
+			utils.StreamPipe(layer, conn, make([]byte, 1024))
+			wg.Done()
+		}()
+		go func() {
+			utils.StreamPipe(conn, layer, make([]byte, 1024))
+			wg.Done()
+		}()
+		wg.Wait()
+		layer.Close()
+		conn.Close()
+		fmt.Println("Connection closed", conn.RemoteAddr())
+		return
+	}
 }

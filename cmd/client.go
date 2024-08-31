@@ -14,12 +14,15 @@ func init() {
 	clientCmd.PersistentFlags().IntVarP(&clientPort, "port", "p", 2413, "Target port")
 	clientCmd.AddCommand(clientGetCmd)
 	clientCmd.AddCommand(clientPutCmd)
+	clientSocks5Cmd.Flags().StringVarP(&clientSocks5Addr, "sock", "a", "localhost:9050", "Listen address for SOCKS5 proxy")
+	clientCmd.AddCommand(clientSocks5Cmd)
 	rootCmd.AddCommand(clientCmd)
 }
 
 var clientHost string
 var clientSecret string
 var clientPort int
+var clientSocks5Addr string
 
 var clientCmd = &cobra.Command{
 	Use:   "client [flags] <hostname|cb> [cmd]",
@@ -33,7 +36,7 @@ Examples:
   tsh client -h cb -p 1337
   tsh client -h 127.0.0.1 -s hello 'ls -la /'`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client.Run([]byte(clientSecret), clientHost, clientPort, constants.RunShell, args)
+		client.Run([]byte(clientSecret), clientHost, clientPort, clientSocks5Addr, constants.RunShell, args)
 	},
 }
 
@@ -42,7 +45,7 @@ var clientGetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	Short: "Get file from remote",
 	Run: func(cmd *cobra.Command, args []string) {
-		client.Run([]byte(clientSecret), clientHost, clientPort, constants.GetFile, args)
+		client.Run([]byte(clientSecret), clientHost, clientPort, clientSocks5Addr, constants.GetFile, args)
 	},
 }
 var clientPutCmd = &cobra.Command{
@@ -50,6 +53,14 @@ var clientPutCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	Short: "Put local file to remote",
 	Run: func(cmd *cobra.Command, args []string) {
-		client.Run([]byte(clientSecret), clientHost, clientPort, constants.PutFile, args)
+		client.Run([]byte(clientSecret), clientHost, clientPort, clientSocks5Addr, constants.PutFile, args)
+	},
+}
+var clientSocks5Cmd = &cobra.Command{
+	Use:   "socks5 ",
+	Args:  cobra.NoArgs,
+	Short: "Start a local socks5 proxy",
+	Run: func(cmd *cobra.Command, args []string) {
+		client.Run([]byte(clientSecret), clientHost, clientPort, clientSocks5Addr, constants.SOCKS5, args)
 	},
 }

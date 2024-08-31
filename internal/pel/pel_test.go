@@ -3,7 +3,9 @@ package pel
 import (
 	"bytes"
 	"crypto/rand"
+	"io"
 	"testing"
+	"time"
 	"tsh-go/internal/constants"
 )
 
@@ -149,6 +151,25 @@ func TestProtocolSmallWrite(t *testing.T) {
 		}
 		if !bytes.Equal(recv, data) {
 			t.Fatal("data 1 mismatch")
+		}
+	})
+}
+func TestProtocolEOF(t *testing.T) {
+	runProtocolTest(t, func(client, server *PktEncLayer) {
+		client.Close()
+		buf := make([]byte, 1)
+		n, err := server.Read(buf)
+		if n != 0 || err != io.EOF {
+			t.Fatal("Read", n, err)
+		}
+	})
+}
+func TestProtocolReadTimeout(t *testing.T) {
+	runProtocolTest(t, func(client, server *PktEncLayer) {
+		buf2 := make([]byte, 2)
+		n, err := server.ReadTimeout(buf2, 1*time.Second)
+		if n != 0 || err == nil {
+			t.Fatal("Read", n, err)
 		}
 	})
 }
