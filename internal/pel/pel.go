@@ -213,15 +213,7 @@ func (layer *PktEncLayer) Close() {
 }
 
 func (layer *PktEncLayer) Write(p []byte) (int, error) {
-	total := 0
-	for total < len(p) {
-		n, err := layer.write(p[total:])
-		if err != nil {
-			return total, err
-		}
-		total += n
-	}
-	return total, nil
+	return layer.write(p[:min(len(p), constants.MaxMessagesize)])
 }
 
 func (layer *PktEncLayer) write(p []byte) (int, error) {
@@ -321,14 +313,14 @@ func (layer *PktEncLayer) read(p []byte) (int, error) {
 }
 
 func (layer *PktEncLayer) readConnUntilFilled(p []byte) error {
-	total := 0
-	fill := len(p)
-	for total < fill {
-		n, err := layer.conn.Read(p[total:fill])
+	idx := 0
+	tot := len(p)
+	for idx < tot {
+		n, err := layer.conn.Read(p[idx:tot])
 		if err != nil {
 			return err
 		}
-		total += n
+		idx += n
 	}
 	return nil
 }

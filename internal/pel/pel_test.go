@@ -11,10 +11,35 @@ import (
 const testSecret = "secrethaha"
 const testAddress = "127.0.0.1:2333"
 
+func (layer *PktEncLayer) WriteFull(p []byte) (int, error) {
+	total := len(p)
+	idx := 0
+	for idx < total {
+		n, err := layer.write(p[idx:min(idx+constants.MaxMessagesize, total)])
+		if err != nil {
+			return idx, err
+		}
+		idx += n
+	}
+	return idx, nil
+}
+
+func (layer *PktEncLayer) ReadFull(p []byte) error {
+	total := 0
+	fill := len(p)
+	for total < fill {
+		n, err := layer.Read(p[total:fill])
+		if err != nil {
+			return err
+		}
+		total += n
+	}
+	return nil
+}
 func TestProtocolBasic(t *testing.T) {
 	data1 := make([]byte, constants.MaxMessagesize)
 	rand.Read(data1)
-	data2 := make([]byte, constants.MaxMessagesize)
+	data2 := make([]byte, constants.MaxMessagesize*3+1234)
 	rand.Read(data2)
 	listener, err := Listen(testAddress, testSecret, true)
 	if err != nil {
@@ -35,7 +60,7 @@ func TestProtocolBasic(t *testing.T) {
 			return
 		}
 		recv2 := make([]byte, len(data2))
-		_, err = conn.Read(recv2)
+		err = conn.ReadFull(recv2)
 		if err != nil {
 			errs <- fmt.Errorf("failed to read data 2: %v", err)
 			return
@@ -59,7 +84,7 @@ func TestProtocolBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal("Write 1", err)
 	}
-	_, err = conn.Write(data2)
+	_, err = conn.WriteFull(data2)
 	if err != nil {
 		t.Fatal("Write 2", err)
 	}
