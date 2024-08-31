@@ -14,7 +14,7 @@ import (
 	"tsh-go/internal/utils"
 
 	"github.com/schollz/progressbar/v3"
-	"golang.org/x/crypto/ssh/terminal"
+	terminal "golang.org/x/term"
 )
 
 func Run(secret []byte, host string, port int, socks5addr string, mode uint8, args []string) {
