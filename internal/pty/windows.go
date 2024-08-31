@@ -8,7 +8,6 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 
@@ -74,11 +73,11 @@ func tryDropWinpty(dstdir string) bool {
 	if fi, err := os.Stat(dstdir); os.IsNotExist(err) {
 		err := os.Mkdir(dstdir, 0700)
 		if err == nil {
-			err := ioutil.WriteFile(winptyAgentPath, resources.WinptyAgent, 0700)
+			err := os.WriteFile(winptyAgentPath, resources.WinptyAgent, 0700)
 			if err != nil {
 				return false
 			}
-			err = ioutil.WriteFile(winptyDllPath, resources.WinptyDll, 0600)
+			err = os.WriteFile(winptyDllPath, resources.WinptyDll, 0600)
 			if err != nil {
 				return false
 			}
