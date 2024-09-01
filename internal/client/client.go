@@ -188,13 +188,13 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs)
 		return
 	}
 
-	buffer := make([]byte, constants.MaxMessagesize)
-	buffer2 := make([]byte, constants.MaxMessagesize)
+	ch := make(chan struct{})
 	go func() {
-		_, _ = utils.CopyBuffer(os.Stdout, layer, buffer)
-		layer.Close()
+		utils.StreamPipe(layer, os.Stdout, make([]byte, constants.MaxMessagesize))
+		ch <- struct{}{} // we can close once the remote connection is closed, no need to wait for stdin close
 	}()
-	_, _ = utils.CopyBuffer(layer, os.Stdin, buffer2)
+	go utils.StreamPipe(os.Stdin, layer, make([]byte, constants.MaxMessagesize))
+	<-ch
 }
 func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 	addr, err := net.ResolveTCPAddr("tcp", arg.Socks5Addr)
@@ -218,11 +218,11 @@ func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 		wg := &sync.WaitGroup{}
 		wg.Add(2)
 		go func() {
-			utils.StreamPipe(layer, conn, make([]byte, 1024))
+			utils.StreamPipe(layer, conn, make([]byte, constants.MaxMessagesize))
 			wg.Done()
 		}()
 		go func() {
-			utils.StreamPipe(conn, layer, make([]byte, 1024))
+			utils.StreamPipe(conn, layer, make([]byte, constants.MaxMessagesize))
 			wg.Done()
 		}()
 		go func() {
