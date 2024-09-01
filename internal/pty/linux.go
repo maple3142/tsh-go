@@ -41,4 +41,3 @@ func OpenPty(command, term string, ws_col, ws_row uint32) (PtyWrapper, error) {
 	}
 	return LinuxPtyWrapper{ptmx: ptmx}, nil
 }
-
