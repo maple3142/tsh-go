@@ -15,7 +15,10 @@ import (
 
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/curve25519"
+	"golang.org/x/net/proxy"
 )
+
+var dialer = proxy.FromEnvironment() // automatically use proxy settings if set (all_proxy and no_proxy)
 
 // Packet Encryption Layer
 type PktEncLayer struct {
@@ -111,7 +114,7 @@ func Dial(address string, secret []byte, isInitiator bool) (l *PktEncLayer, err 
 			err = NewPelError(constants.PelSystemError)
 		}
 	}()
-	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	conn, err := dialer.Dial("tcp", address)
 	if err != nil {
 		return nil, err
 	}

@@ -26,14 +26,12 @@ var clientPort int
 var clientSocks5Addr string
 
 var clientCmd = &cobra.Command{
-	Use:   "client [flags] <hostname|cb> [cmd]",
+	Use:   "client {-h target | -h cb} [-p port] [action]",
 	Args:  cobra.MaximumNArgs(1),
 	Short: "Tiny SHell client",
 	Long: `Tiny SHell client, connect to remote server and spawn a shell.
-Accepts cmd to run on remote server.
-
-Examples:
-  tsh client -h 172.16.123.45
+Accepts cmd to run on remote server.`,
+	Example: `  tsh client -h 172.16.123.45
   tsh client -h cb -p 1337
   tsh client -h 127.0.0.1 -s hello 'ls -la /'`,
 	Run: func(cmd *cobra.Command, args []string) {

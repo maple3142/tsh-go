@@ -22,5 +22,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/txthinking/runnergroup v0.0.0-20230325130830-408dc5853f86 // indirect
+	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/sys v0.24.0 // indirect
 )
