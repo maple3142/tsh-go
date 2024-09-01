@@ -67,8 +67,8 @@ func NewPelError(err int) error {
 	return fmt.Errorf("PelError(code=%d)", err)
 }
 
-func NewPelErrorReason(err int, reason string) error {
-	return fmt.Errorf("PelError(code=%d, reason=%v)", err, reason)
+func NewHandshakeError(err int, reason string) error {
+	return fmt.Errorf("PelError(at=\"Handshake\", code=%d, reason=%#v)", err, reason)
 }
 
 func Listen(address string, secret []byte, isInitiator bool) (*PktEncLayerListener, error) {
@@ -140,7 +140,7 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 	rand.Read(my_sk)
 	my_pk, err := curve25519.X25519(my_sk, curve25519.Basepoint)
 	if err != nil {
-		return NewPelErrorReason(constants.PelFailure, "Failed to generate key pair")
+		return NewHandshakeError(constants.PelFailure, "Failed to generate key pair")
 	}
 	pk_and_digest := append(my_pk, layer.hmac(my_pk)...)
 	if !isInitiator {
@@ -148,12 +148,12 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 		recvbuf := make([]byte, curve25519.PointSize+constants.Digestsize)
 		err = layer.readConnUntilFilledTimeout(recvbuf, timeout)
 		if err != nil {
-			return NewPelErrorReason(constants.PelFailure, "Initiator failed to receive public key and digest")
+			return NewHandshakeError(constants.PelFailure, "Failed to receive public key and digest")
 		}
 		remote_pk := recvbuf[:curve25519.PointSize]
 		digest := recvbuf[curve25519.PointSize:]
 		if subtle.ConstantTimeCompare(digest, layer.hmac(remote_pk)) != 1 {
-			return NewPelErrorReason(constants.PelFailure, "Public key digest verification failed")
+			return NewHandshakeError(constants.PelFailure, "Public key digest verification failed  (perhaps secret does not match?)")
 		}
 
 		// send public key and digest
@@ -162,13 +162,13 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 		n, err := layer.conn.Write(pk_and_digest)
 		layer.conn.SetWriteDeadline(time.Time{})
 		if n != curve25519.ScalarSize+constants.Digestsize || err != nil {
-			return NewPelErrorReason(constants.PelFailure, "Responder failed to send public key")
+			return NewHandshakeError(constants.PelFailure, "Failed to send public key")
 		}
 
 		// derive shared secret
 		shared_secret, err := curve25519.X25519(my_sk, remote_pk)
 		if err != nil {
-			return NewPelErrorReason(constants.PelFailure, "Failed to derive shared secret")
+			return NewHandshakeError(constants.PelFailure, "Failed to derive shared secret")
 		}
 		randomness := layer.hmac(shared_secret)
 		rand1 := randomness[:16]
@@ -192,25 +192,25 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 		n, err := layer.conn.Write(pk_and_digest)
 		layer.conn.SetWriteDeadline(time.Time{})
 		if n != curve25519.ScalarSize+constants.Digestsize || err != nil {
-			return NewPelErrorReason(constants.PelFailure, "Responder failed to send public key")
+			return NewHandshakeError(constants.PelFailure, "Failed to send public key")
 		}
 
 		// receive public key
 		recvbuf := make([]byte, curve25519.PointSize+constants.Digestsize)
 		err = layer.readConnUntilFilledTimeout(recvbuf, timeout)
 		if err != nil {
-			return NewPelErrorReason(constants.PelFailure, "Initiator failed to receive public key and digest")
+			return NewHandshakeError(constants.PelFailure, "Failed to receive public key and digest (perhaps secret does not match?)")
 		}
 		remote_pk := recvbuf[:curve25519.PointSize]
 		digest := recvbuf[curve25519.PointSize:]
 		if subtle.ConstantTimeCompare(digest, layer.hmac(remote_pk)) != 1 {
-			return NewPelErrorReason(constants.PelFailure, "Public key digest verification failed")
+			return NewHandshakeError(constants.PelFailure, "Public key digest verification failed")
 		}
 
 		// derive shared secret
 		shared_secret, err := curve25519.X25519(my_sk, remote_pk)
 		if err != nil {
-			return NewPelErrorReason(constants.PelFailure, "Failed to derive shared secret")
+			return NewHandshakeError(constants.PelFailure, "Failed to derive shared secret")
 		}
 		randomness := layer.hmac(shared_secret)
 		rand1 := randomness[:16]

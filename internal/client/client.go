@@ -49,25 +49,25 @@ func Run(secret []byte, host string, port int, socks5addr string, mode uint8, ar
 			fmt.Print("Waiting for the server to connect...")
 			layer, err := ln.Accept()
 			ln.Close()
+			fmt.Println("connected.")
 			if err != nil {
-				fmt.Println("\nFailed to accept connection.")
+				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
 			}
-			fmt.Println("connected.")
 			layer.Write([]byte{mode})
 			return layer
 		} else {
 			addr := fmt.Sprintf("%s:%d", host, port)
 			layer, err := pel.Dial(addr, secret, true)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to connect to %s:%d\n", host, port)
-				fmt.Fprintf(os.Stderr, "It is possible that the server is not running or the secret is incorrect.\n")
-				os.Exit(0)
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				os.Exit(1)
 			}
 			layer.Write([]byte{mode})
 			return layer
 		}
 	}
+
 	switch mode {
 	case constants.Kill:
 		layer := waitForConnection()

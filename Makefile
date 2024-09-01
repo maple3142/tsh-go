@@ -3,7 +3,7 @@ GOFLAGS_WINDOWS=-trimpath -ldflags "-s -w" #-H=windowsgui"
 GOOS ?= linux
 GOARCH ?= amd64
 
-DEFAULT_ENV=CGO_ENABLED=0
+DEFAULT_ENV ?= CGO_ENABLED=0
 
 all:
 	@echo
