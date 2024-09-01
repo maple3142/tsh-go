@@ -19,15 +19,15 @@ import (
 
 // Packet Encryption Layer
 type PktEncLayer struct {
-	conn          net.Conn
-	secret        []byte
-	sendEncrypter cipher.AEAD
-	recvDecrypter cipher.AEAD
-	sendPktCtr    uint
-	recvPktCtr    uint
-	readBuffer    []byte // used for avoid allocation
-	writeBuffer   []byte // used for avoid allocation
-	tmpBuffer     []byte // used for store remaining data if the read buffer is not enough
+	conn       net.Conn
+	secret     []byte
+	sendAead   cipher.AEAD
+	recvAead   cipher.AEAD
+	sendPktCtr uint
+	recvPktCtr uint
+	recvBuffer []byte // used for avoid allocation
+	sendBuffer []byte // used for avoid allocation
+	tmpBuffer  []byte // used for store remaining data if the read buffer is not enough
 }
 
 // Packet Encryption Layer Listener
@@ -52,13 +52,13 @@ func NewPktEncLayerListener(address string, secret []byte, isInitiator bool) (*P
 
 func NewPktEncLayer(conn net.Conn, secret []byte) (*PktEncLayer, error) {
 	layer := &PktEncLayer{
-		conn:        conn,
-		secret:      secret,
-		sendPktCtr:  0,
-		recvPktCtr:  0,
-		readBuffer:  make([]byte, 2+constants.Bufsize),
-		writeBuffer: make([]byte, 2+constants.Bufsize),
-		tmpBuffer:   nil,
+		conn:       conn,
+		secret:     secret,
+		sendPktCtr: 0,
+		recvPktCtr: 0,
+		recvBuffer: make([]byte, 2+constants.Bufsize),
+		sendBuffer: make([]byte, 2+constants.Bufsize),
+		tmpBuffer:  nil,
 	}
 	return layer, nil
 }
@@ -179,11 +179,11 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 
 		key = layer.hmac(rand1)
 		aead, _ = chacha20poly1305.New(key)
-		layer.sendEncrypter = aead
+		layer.sendAead = aead
 
 		key = layer.hmac(rand2)
 		aead, _ = chacha20poly1305.New(key)
-		layer.recvDecrypter = aead
+		layer.recvAead = aead
 		return nil
 	} else {
 		// send public key and digest
@@ -221,11 +221,11 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 
 		key = layer.hmac(rand2)
 		aead, _ = chacha20poly1305.New(key)
-		layer.sendEncrypter = aead
+		layer.sendAead = aead
 
 		key = layer.hmac(rand1)
 		aead, _ = chacha20poly1305.New(key)
-		layer.recvDecrypter = aead
+		layer.recvAead = aead
 		return nil
 	}
 }
@@ -253,7 +253,7 @@ func (layer *PktEncLayer) write(p []byte) (int, error) {
 		return 0, NewPelError(constants.PelBadMsgLength)
 	}
 	pkt_length := 2 + data_length
-	buffer := layer.writeBuffer[0:pkt_length]
+	buffer := layer.sendBuffer[0:pkt_length]
 	binary.LittleEndian.PutUint16(buffer, uint16(data_length))
 
 	additionalData := make([]byte, 4)
@@ -262,7 +262,7 @@ func (layer *PktEncLayer) write(p []byte) (int, error) {
 	nonce := buffer[2 : 2+chacha20poly1305.NonceSize]
 	rand.Read(nonce)
 
-	layer.sendEncrypter.Seal(nonce, nonce, p, additionalData) // append ciphertext (with tag) to nonce
+	layer.sendAead.Seal(nonce, nonce, p, additionalData) // append ciphertext (with tag) to nonce
 
 	idx := 0
 	for idx < pkt_length {
@@ -301,7 +301,7 @@ func (layer *PktEncLayer) ReadTimeout(p []byte, timeout time.Duration) (int, err
 }
 
 func (layer *PktEncLayer) read(p []byte) (int, error) {
-	buffer := layer.readBuffer
+	buffer := layer.recvBuffer
 
 	if err := layer.readConnUntilFilled(buffer[:2]); err != nil {
 		return 0, err
@@ -312,7 +312,7 @@ func (layer *PktEncLayer) read(p []byte) (int, error) {
 		return 0, NewPelError(constants.PelBadMsgLength)
 	}
 
-	data := layer.readBuffer[0:data_length]
+	data := layer.recvBuffer[0:data_length]
 
 	if err := layer.readConnUntilFilled(data); err != nil {
 		return 0, NewPelError(constants.PelConnClosed)
@@ -324,7 +324,7 @@ func (layer *PktEncLayer) read(p []byte) (int, error) {
 	nonce := data[0:chacha20poly1305.NonceSize]
 	ciphertext := data[chacha20poly1305.NonceSize:data_length]
 
-	pt, err := layer.recvDecrypter.Open(ciphertext[:0], nonce, ciphertext, additionalData)
+	pt, err := layer.recvAead.Open(ciphertext[:0], nonce, ciphertext, additionalData)
 	if err != nil {
 		return 0, NewPelError(constants.PelCorruptedData)
 	}
