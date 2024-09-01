@@ -6,6 +6,7 @@ package pty
 import (
 	"bytes"
 	"crypto/sha1"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -37,7 +38,12 @@ func (pw WinPtyWrapper) Close() {
 	pw.wp.Close()
 }
 
-func init() {
+var winptyInitialized bool = false
+
+func winptyInit() {
+	if winptyInitialized {
+		return
+	}
 	id, err := machineid.ID()
 	if err != nil {
 		hostname, err := os.Hostname()
@@ -48,7 +54,7 @@ func init() {
 		}
 	}
 
-	h := sha1.New()
+	h := sha256.New()
 	ostempdir := os.TempDir()
 
 	for tries := 0; tries < 100; tries++ {
@@ -61,6 +67,7 @@ func init() {
 		dstdir := path.Join(ostempdir, fakeguid)
 		if tryDropWinpty(dstdir) {
 			tempdir = dstdir
+			winptyInitialized = true
 			break
 		}
 	}
@@ -126,6 +133,7 @@ func isFileNotExist(path string) bool {
 }
 
 func OpenPty(command, term string, ws_col, ws_row uint32) (PtyWrapper, error) {
+	winptyInit()
 	if command == "exec bash --login" {
 		command = `C:\windows\system32\cmd.exe`
 	}
