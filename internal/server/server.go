@@ -19,11 +19,15 @@ import (
 	"github.com/txthinking/socks5"
 )
 
-func RunInBackground() {
-	fullpath, _ := filepath.Abs(os.Args[0])
-	cmd := exec.Command(fullpath, os.Args[1:]...)
+func RunInBackground() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, os.Args[1:]...)
 	cmd.Env = append(os.Environ(), "TSH_RUNNING_AS_DAEMON=1")
 	cmd.Start()
+	return nil
 }
 
 func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
@@ -32,7 +36,10 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 		isDaemon = true
 	}
 	if runAsDaemon && !isDaemon {
-		RunInBackground()
+		if RunInBackground() != nil {
+			fmt.Fprintln(os.Stderr, "Failed to run as daemon")
+			os.Exit(1)
+		}
 		os.Exit(0)
 	}
 
