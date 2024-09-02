@@ -2,6 +2,8 @@ module tsh-go
 
 go 1.23
 
+replace github.com/spf13/cobra v1.8.1 => github.com/aarzilli/cobra v1.1.3-0.20240810113104-ee7aba860a78
+
 require (
 	github.com/creack/pty v1.1.23
 	github.com/denisbrodbeck/machineid v1.0.1
@@ -17,7 +19,6 @@ require (
 
 require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
