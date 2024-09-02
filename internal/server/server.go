@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -122,12 +124,30 @@ func handleGetFile(layer *pel.PktEncLayer) {
 
 func handlePutFile(layer *pel.PktEncLayer) {
 	buffer := make([]byte, constants.Bufsize)
-	n, err := layer.Read(buffer)
+	var n int
+	var err error
+	n, err = layer.Read(buffer)
 	if err != nil {
 		return
 	}
-	filename := filepath.FromSlash(string(buffer[:n]))
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0644)
+	destination := filepath.FromSlash(string(buffer[:n]))
+	n, err = layer.Read(buffer)
+	if err != nil {
+		return
+	}
+	basename := string(buffer[:n])
+	if runtime.GOOS == "windows" {
+		basename = strings.ReplaceAll(basename, ":", "_")
+		basename = strings.ReplaceAll(basename, "\\", "_")
+	}
+
+	// if dst is a directory, save file to dst/basename
+	// otherwise, save file to dst
+	if fi, err := os.Stat(destination); err == nil && fi.IsDir() {
+		destination = filepath.Join(destination, basename)
+	}
+
+	f, err := os.OpenFile(destination, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return
 	}

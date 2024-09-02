@@ -22,13 +22,13 @@ type RunShellArgs struct {
 }
 
 type GetFileArgs struct {
-	Srcfile string
-	Dstdir  string
+	Src string
+	Dst string
 }
 
 type PutFileArgs struct {
-	Srcfile string
-	Dstdir  string
+	Src string
+	Dst string
 }
 
 type Socks5Args struct {
@@ -93,15 +93,24 @@ func handleGetFile(waitForConnection func() *pel.PktEncLayer, arg GetFileArgs) {
 	defer layer.Close()
 	buffer := make([]byte, constants.MaxMessagesize)
 
-	basename := strings.ReplaceAll(arg.Srcfile, "\\", "/")
+	basename := strings.ReplaceAll(arg.Src, "\\", "/")
 	basename = filepath.Base(filepath.FromSlash(basename))
 
-	f, err := os.OpenFile(filepath.Join(arg.Dstdir, basename), os.O_CREATE|os.O_RDWR, 0644)
+	destination := arg.Dst
+
+	// if dst is a directory, save file to dst/basename
+	// otherwise, save file to dst
+	if fi, err := os.Stat(destination); err == nil && fi.IsDir() {
+		destination = filepath.Join(destination, basename)
+	}
+
+	f, err := os.OpenFile(destination, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return
 	}
 	defer f.Close()
-	_, err = layer.Write([]byte(arg.Srcfile))
+
+	_, err = layer.Write([]byte(arg.Src))
 	if err != nil {
 		return
 	}
@@ -121,20 +130,26 @@ func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
 	layer := waitForConnection()
 	defer layer.Close()
 	buffer := make([]byte, constants.MaxMessagesize)
-	f, err := os.Open(arg.Srcfile)
+	f, err := os.Open(arg.Src)
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	defer f.Close()
 	fi, err := f.Stat()
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	fsize := fi.Size()
 
-	basename := filepath.Base(arg.Srcfile)
-	basename = strings.ReplaceAll(basename, "\\", "_")
-	_, err = layer.Write([]byte(arg.Dstdir + "/" + basename))
+	basename := filepath.Base(arg.Src)
+	_, err = layer.Write([]byte(arg.Dst))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	_, err = layer.Write([]byte(basename))
 	if err != nil {
 		fmt.Println(err)
 		return

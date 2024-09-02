@@ -16,7 +16,7 @@ func init() {
 	clientCmd.AddCommand(clientKillCmd)
 	clientCmd.AddCommand(clientGetCmd)
 	clientCmd.AddCommand(clientPutCmd)
-	clientSocks5Cmd.Flags().StringVarP(&clientSocks5Addr, "sock", "a", "localhost:9050", "Listen address for SOCKS5 proxy")
+	clientSocks5Cmd.Flags().StringVarP(&clientSocks5Addr, "addr", "a", "localhost:9050", "Listen address for SOCKS5 proxy")
 	clientCmd.AddCommand(clientSocks5Cmd)
 	rootCmd.AddCommand(clientCmd)
 }
@@ -58,20 +58,26 @@ var clientKillCmd = &cobra.Command{
 	},
 }
 var clientGetCmd = &cobra.Command{
-	Use:   "get <source-file> <dest-dir>",
+	Use:   "get <source-file> <dest>",
 	Args:  cobra.ExactArgs(2),
 	Short: "Get file from remote",
+	Long: `Get file from remote, the destination can be a directory or a file.
+ If the destination is a directory, the file will be saved with the same name as the source file.
+ If the destination is a file or not exist, the file will be saved with the specified name.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		arg := client.GetFileArgs{Srcfile: args[0], Dstdir: args[1]}
+		arg := client.GetFileArgs{Src: args[0], Dst: args[1]}
 		client.Run([]byte(clientSecret), clientHost, clientPort, constants.GetFile, arg)
 	},
 }
 var clientPutCmd = &cobra.Command{
-	Use:   "put <source-file> <dest-dir>",
+	Use:   "put <source-file> <dest>",
 	Args:  cobra.ExactArgs(2),
 	Short: "Put local file to remote",
+	Long: `Put local file to remote, the destination can be a directory or a file.
+ If the destination is a directory, the file will be saved with the same name as the source file.
+ If the destination is a file or not exist, the file will be saved with the specified name.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		arg := client.PutFileArgs{Srcfile: args[0], Dstdir: args[1]}
+		arg := client.PutFileArgs{Src: args[0], Dst: args[1]}
 		client.Run([]byte(clientSecret), clientHost, clientPort, constants.PutFile, arg)
 	},
 }
