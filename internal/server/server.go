@@ -107,6 +107,8 @@ func handleGeneric(layer *pel.PktEncLayer) {
 		handleSocks5(layer)
 	case constants.Pipe:
 		handlePipe(layer)
+	case constants.RunShellNoTTY:
+		handleRunShellNoTTY(layer)
 	}
 }
 
@@ -187,6 +189,35 @@ func handleRunShell(layer *pel.PktEncLayer) {
 	}
 	defer tp.Close()
 	utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), tp.StdOut(), tp.StdIn(), buffer1, buffer2)
+}
+
+func handleRunShellNoTTY(layer *pel.PktEncLayer) {
+	buffer1 := make([]byte, constants.MaxMessagesize)
+	cmdbuf, err := layer.ReadVarLength(buffer1)
+	if err != nil {
+		return
+	}
+	command := string(cmdbuf)
+
+	cmd := exec.Command("/bin/sh", "-c", command)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	combinedOutput := io.MultiReader(stdout, stderr)
+	go cmd.Run()
+	utils.DuplexPipeFull(layer.ReadCloser(), layer.WriteCloser(), combinedOutput, stdin, buffer1, nil, 0)
 }
 
 func handleSocks5(layer *pel.PktEncLayer) {

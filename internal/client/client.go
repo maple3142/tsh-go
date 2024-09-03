@@ -91,6 +91,8 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 		handleSocks5(waitForConnection, arg.(Socks5Args))
 	case constants.Pipe:
 		handlePipe(waitForConnection, arg.(PipeArgs))
+	case constants.RunShellNoTTY:
+		handleRunShellNoTTY(waitForConnection, arg.(RunShellArgs))
 	}
 }
 
@@ -251,6 +253,16 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs)
 	}
 
 	err = layer.WriteVarLength([]byte(arg.Command))
+	if err != nil {
+		return
+	}
+	utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
+}
+func handleRunShellNoTTY(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs) {
+	layer := waitForConnection()
+	defer layer.Close()
+
+	err := layer.WriteVarLength([]byte(arg.Command))
 	if err != nil {
 		return
 	}
