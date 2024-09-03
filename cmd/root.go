@@ -3,6 +3,8 @@ package cmd
 import (
 	_ "embed"
 	"fmt"
+	"io"
+	"log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -12,8 +14,11 @@ import (
 var defaultSecret string
 var defaultPort = 2413
 
+var quiet bool
+
 func init() {
 	// rootCmd.PersistentFlags().BoolP("help", "", false, "help for this command") // disable `-h` flag
+	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Quiet mode")
 	rootCmd.Root().CompletionOptions.HiddenDefaultCmd = true // hide completion command
 }
 
@@ -21,6 +26,11 @@ var rootCmd = &cobra.Command{
 	Use:   "tsh",
 	Short: "Tiny SHell written in Go",
 	Long:  `This is Tiny SHell rewritten in Go programming language.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if quiet {
+			log.SetOutput(io.Discard)
+		}
+	},
 }
 
 func Execute() {

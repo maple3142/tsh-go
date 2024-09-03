@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -47,15 +48,15 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 			addr := fmt.Sprintf(":%d", port)
 			ln, err := pel.Listen(addr, secret, false)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
+				log.Println(err)
 				os.Exit(1)
 			}
-			fmt.Print("Waiting for the server to connect...")
+			log.Print("Waiting for the server to connect...")
 			layer, err := ln.Accept()
 			ln.Close()
-			fmt.Println("connected.")
+			log.Println("connected.")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "%v\n", err)
+				log.Println(err)
 				os.Exit(1)
 			}
 			layer.Write([]byte{mode})
@@ -64,7 +65,7 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 			addr := fmt.Sprintf("%s:%d", host, port)
 			layer, err := pel.Dial(addr, secret, true)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "%v\n", err)
+				log.Println(err)
 				os.Exit(1)
 			}
 			layer.Write([]byte{mode})
@@ -76,7 +77,7 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 	case constants.Kill:
 		layer := waitForConnection()
 		layer.Close()
-		fmt.Println("Server killed")
+		log.Println("Server killed")
 	case constants.RunShell:
 		handleRunShell(waitForConnection, arg.(RunShellArgs))
 	case constants.GetFile:
@@ -106,14 +107,14 @@ func handleGetFile(waitForConnection func() *pel.PktEncLayer, arg GetFileArgs) {
 
 	f, err := os.OpenFile(destination, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	defer f.Close()
 
 	err = layer.WriteVarLength([]byte(arg.Src))
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	bar := progressbar.NewOptions(-1,
@@ -125,7 +126,7 @@ func handleGetFile(waitForConnection func() *pel.PktEncLayer, arg GetFileArgs) {
 		progressbar.OptionSpinnerType(22),
 	)
 	utils.CopyBuffer(io.MultiWriter(f, bar), layer, buffer)
-	fmt.Print("\nDone.\n")
+	log.Print("\nDone.\n")
 }
 
 func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
@@ -134,13 +135,13 @@ func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
 	buffer := make([]byte, constants.MaxMessagesize)
 	f, err := os.Open(arg.Src)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	defer f.Close()
 	fi, err := f.Stat()
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	fsize := fi.Size()
@@ -148,12 +149,12 @@ func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
 	basename := filepath.Base(arg.Src)
 	err = layer.WriteVarLength([]byte(arg.Dst))
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	err = layer.WriteVarLength([]byte(basename))
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	bar := progressbar.NewOptions(int(fsize),
@@ -164,7 +165,7 @@ func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
 		progressbar.OptionSetDescription("Uploading"),
 	)
 	utils.CopyBuffer(io.MultiWriter(layer, bar), f, buffer)
-	fmt.Print("\nDone.\n")
+	log.Print("\nDone.\n")
 }
 
 func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs) {
@@ -216,22 +217,22 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs)
 func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 	addr, err := net.ResolveTCPAddr("tcp", arg.Socks5Addr)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		log.Println(err)
 		os.Exit(1)
 	}
 	l, err := net.ListenTCP("tcp", addr)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		log.Println(err)
 		os.Exit(1)
 	}
-	fmt.Println("Socks5 proxy listening at", l.Addr())
+	log.Println("Socks5 proxy listening at", l.Addr())
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			panic(err)
+			log.Println(err)
 		}
 		layer := waitForConnection()
-		fmt.Println("Connection established", conn.RemoteAddr())
+		log.Println("Connection established", conn.RemoteAddr())
 		wg := &sync.WaitGroup{}
 		wg.Add(2)
 		go func() {
@@ -246,7 +247,7 @@ func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 			wg.Wait()
 			layer.Close()
 			conn.Close()
-			fmt.Println("Connection closed", conn.RemoteAddr())
+			log.Println("Connection closed", conn.RemoteAddr())
 		}()
 	}
 }

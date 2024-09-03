@@ -40,7 +40,7 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 	}
 	if runAsDaemon && !isDaemon {
 		if RunInBackground() != nil {
-			fmt.Fprintln(os.Stderr, "Failed to run as daemon")
+			log.Panicln("Failed to run as daemon")
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -59,7 +59,7 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 		addr := fmt.Sprintf(":%d", port)
 		ln, err := pel.Listen(addr, secret, false)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			log.Println(err)
 			os.Exit(1)
 		}
 		for {
@@ -199,7 +199,7 @@ func handleSocks5(layer *pel.PktEncLayer) {
 		log.Println(err)
 		return
 	}
-	fmt.Println("Request type", req.Cmd)
+	log.Println("Request type", req.Cmd)
 	if req.Cmd == socks5.CmdConnect {
 		conn, err := req.Connect(layer)
 		if err != nil {
@@ -207,7 +207,7 @@ func handleSocks5(layer *pel.PktEncLayer) {
 			log.Println(err)
 			return
 		}
-		fmt.Println("Connection established", conn.RemoteAddr())
+		log.Println("Connection established", conn.RemoteAddr())
 		wg := &sync.WaitGroup{}
 		wg.Add(2)
 		go func() {
@@ -221,7 +221,7 @@ func handleSocks5(layer *pel.PktEncLayer) {
 		wg.Wait()
 		layer.Close()
 		conn.Close()
-		fmt.Println("Connection closed", conn.RemoteAddr())
+		log.Println("Connection closed", conn.RemoteAddr())
 		return
 	}
 }
