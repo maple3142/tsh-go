@@ -185,3 +185,47 @@ func TestProtocolVarLength(t *testing.T) {
 		}
 	})
 }
+func TestProtocolHalfClose(t *testing.T) {
+	runProtocolTest(t, func(client, server *PktEncLayer) {
+		server.CloseWrite()
+		recv := make([]byte, 1)
+		_, err := io.ReadFull(client, recv)
+		if err != io.EOF {
+			t.Fatal("Not EOF error", err)
+		}
+
+		// test write after close
+		buf := []byte("hello")
+		client.Write(buf)
+		recv = make([]byte, len(buf))
+		_, err = server.Read(recv)
+		if err != nil {
+			t.Fatal("Read", err)
+		}
+		if !bytes.Equal(recv, buf) {
+			t.Fatal("data mismatch")
+		}
+	})
+	runProtocolTest(t, func(client, server *PktEncLayer) {
+		buf := make([]byte, 10)
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			server.CloseRead()
+		}()
+		_, err := server.Read(buf)
+		if err != io.EOF {
+			t.Fatal("Not EOF error", err)
+		}
+	})
+	runProtocolTest(t, func(client, server *PktEncLayer) {
+		buf := make([]byte, 10)
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			client.CloseWrite()
+		}()
+		_, err := server.Read(buf)
+		if err != io.EOF {
+			t.Fatal("Not EOF error", err)
+		}
+	})
+}

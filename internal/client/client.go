@@ -221,6 +221,7 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs)
 	defer layer.Close()
 	oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
+		log.Println(err)
 		return
 	}
 
@@ -253,14 +254,7 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs)
 	if err != nil {
 		return
 	}
-
-	ch := make(chan struct{})
-	go func() {
-		utils.StreamPipe(layer, os.Stdout, make([]byte, constants.MaxMessagesize))
-		ch <- struct{}{} // we can close once the remote connection is closed, no need to wait for stdin close
-	}()
-	go utils.StreamPipe(os.Stdin, layer, make([]byte, constants.MaxMessagesize))
-	<-ch
+	utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
 }
 func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 	addr, err := net.ResolveTCPAddr("tcp", arg.Socks5Addr)
@@ -275,13 +269,14 @@ func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 	}
 	log.Println("Socks5 proxy listening at", l.Addr())
 	for {
-		conn, err := l.Accept()
+		conn, err := l.AcceptTCP()
 		if err != nil {
 			log.Println(err)
+			continue
 		}
 		layer := waitForConnection()
 		log.Println("Connection established", conn.RemoteAddr())
-		utils.DuplexPipe(conn, conn, layer, nil, nil)
+		utils.DuplexPipe(conn, conn, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
 		log.Println("Connection closed", conn.RemoteAddr())
 	}
 }
@@ -289,5 +284,5 @@ func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 func handlePipe(waitForConnection func() *pel.PktEncLayer, arg PipeArgs) {
 	layer := waitForConnection()
 	layer.WriteVarLength([]byte(arg.TargetAddr))
-	utils.DuplexPipe(os.Stdin, os.Stdout, layer, nil, nil)
+	utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
 }

@@ -3,6 +3,8 @@ package utils
 import (
 	"errors"
 	"io"
+	"net"
+	"time"
 	"tsh-go/internal/constants"
 )
 
@@ -43,12 +45,15 @@ func CopyBuffer(dst io.Writer, src io.Reader, buf []byte) (written int64, err er
 }
 
 func StreamPipe(src io.Reader, dst io.WriteCloser, buf []byte) (int64, error) {
-	n, err := CopyBuffer(dst, src, buf)
-	dst.Close()
-	return n, err
+	/// just CopyBuffer, but left to right
+	return CopyBuffer(dst, src, buf)
 }
 
-func DuplexPipe(localReader io.Reader, localWriter io.WriteCloser, remote io.ReadWriteCloser, bufLocal2Remote []byte, bufRemote2Local []byte) {
+const CloseTimeout = 1 * time.Second
+
+func DuplexPipe(localReader io.Reader, localWriter io.WriteCloser, remoteReader io.Reader, remoteWriter io.WriteCloser, bufLocal2Remote []byte, bufRemote2Local []byte) {
+	// local refers to the connection that related to the client
+	// remote refers to the target that the client wants to connect to
 	if bufLocal2Remote == nil {
 		bufLocal2Remote = make([]byte, constants.MaxMessagesize)
 	}
@@ -58,9 +63,49 @@ func DuplexPipe(localReader io.Reader, localWriter io.WriteCloser, remote io.Rea
 
 	ch := make(chan struct{})
 	go func() {
-		StreamPipe(remote, localWriter, bufRemote2Local)
-		ch <- struct{}{} // we can close once the remote connection is closed, no need to wait for local stream
+		StreamPipe(remoteReader, localWriter, bufRemote2Local)
+		// log.Println("remoteReader closed", time.Now())
+		localWriter.Close()
+		ch <- struct{}{}
 	}()
-	go StreamPipe(localReader, remote, bufLocal2Remote)
+	go func() {
+		StreamPipe(localReader, remoteWriter, bufLocal2Remote)
+		// log.Println("localReader closed", time.Now())
+		// same as nc -w 1 behavior
+		time.Sleep(CloseTimeout)
+		remoteWriter.Close()
+	}()
 	<-ch
+}
+
+type tcpConnReadCloser struct {
+	conn *net.TCPConn
+}
+
+func (t *tcpConnReadCloser) Read(p []byte) (n int, err error) {
+	return t.conn.Read(p)
+}
+
+func (t *tcpConnReadCloser) Close() error {
+	return t.conn.CloseRead()
+}
+
+type tcpConnWriteCloser struct {
+	Conn *net.TCPConn
+}
+
+func (t *tcpConnWriteCloser) Write(p []byte) (n int, err error) {
+	return t.Conn.Write(p)
+}
+
+func (t *tcpConnWriteCloser) Close() error {
+	return t.Conn.CloseWrite()
+}
+
+func NewTCPConnReadCloser(conn *net.TCPConn) io.ReadCloser {
+	return &tcpConnReadCloser{conn: conn}
+}
+
+func NewTCPConnWriteCloser(conn *net.TCPConn) io.WriteCloser {
+	return &tcpConnWriteCloser{Conn: conn}
 }

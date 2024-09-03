@@ -32,6 +32,9 @@ type PktEncLayer struct {
 	recvBuffer []byte // used for avoid allocation
 	sendBuffer []byte // used for avoid allocation
 	tmpBuffer  []byte // used for store remaining data if the read buffer is not enough
+	// record whether the connection is still readable
+	isEof   bool
+	eofChan chan struct{}
 }
 
 // Packet Encryption Layer Listener
@@ -63,6 +66,8 @@ func NewPktEncLayer(conn net.Conn, secret []byte) (*PktEncLayer, error) {
 		recvBuffer: make([]byte, 2+constants.Bufsize),
 		sendBuffer: make([]byte, 2+constants.Bufsize),
 		tmpBuffer:  nil,
+		isEof:      false,
+		eofChan:    make(chan struct{}),
 	}
 	return layer, nil
 }
@@ -268,7 +273,7 @@ func (layer *PktEncLayer) write(p []byte) (int, error) {
 	}
 
 	data_length := chacha20poly1305.NonceSize + length + chacha20poly1305.Overhead
-	if data_length > (1 << 16) {
+	if data_length > constants.Bufsize {
 		return 0, NewPelError(constants.PelBadMsgLength)
 	}
 	pkt_length := 2 + data_length
@@ -289,6 +294,22 @@ func (layer *PktEncLayer) write(p []byte) (int, error) {
 	}
 	layer.sendPktCtr++
 	return length, nil
+}
+
+func (layer *PktEncLayer) CloseWrite() error {
+	signal := []byte{0xff, 0xff} // EOF signal
+	_, err := layer.conn.Write(signal)
+	return err
+}
+
+func (layer *PktEncLayer) CloseRead() error {
+	layer.isEof = true
+	// non-blocking send
+	select {
+	case layer.eofChan <- struct{}{}:
+	default:
+	}
+	return nil
 }
 
 func (layer *PktEncLayer) Read(p []byte) (int, error) {
@@ -323,6 +344,10 @@ func (layer *PktEncLayer) read(p []byte) (int, error) {
 	}
 
 	data_length := int(binary.LittleEndian.Uint16(buffer))
+	if data_length == 0xffff { // EOF signal
+		layer.CloseRead()
+		return 0, io.EOF
+	}
 	if data_length <= 0 || data_length > constants.Bufsize {
 		return 0, NewPelError(constants.PelBadMsgLength)
 	}
@@ -353,8 +378,20 @@ func (layer *PktEncLayer) read(p []byte) (int, error) {
 }
 
 func (layer *PktEncLayer) readConnUntilFilled(p []byte) error {
-	_, err := io.ReadFull(layer.conn, p)
-	return err
+	if layer.isEof {
+		return io.EOF
+	}
+	ch := make(chan error)
+	go func() {
+		_, err := io.ReadFull(layer.conn, p)
+		ch <- err
+	}()
+	select {
+	case err := <-ch:
+		return err
+	case <-layer.eofChan:
+		return io.EOF
+	}
 }
 
 func (layer *PktEncLayer) readConnUntilFilledTimeout(p []byte, timeout time.Duration) error {
@@ -395,4 +432,36 @@ func (layer *PktEncLayer) ReadVarLength(buf []byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf[:length], nil
+}
+
+type LayerReadCloser struct {
+	layer *PktEncLayer
+}
+
+func (lrc *LayerReadCloser) Read(p []byte) (int, error) {
+	return lrc.layer.Read(p)
+}
+
+func (lrc *LayerReadCloser) Close() error {
+	return lrc.layer.CloseRead()
+}
+
+type LayerWriteCloser struct {
+	layer *PktEncLayer
+}
+
+func (lwc *LayerWriteCloser) Write(p []byte) (int, error) {
+	return lwc.layer.Write(p)
+}
+
+func (lwc *LayerWriteCloser) Close() error {
+	return lwc.layer.CloseWrite()
+}
+
+func (layer *PktEncLayer) ReadCloser() io.ReadCloser {
+	return &LayerReadCloser{layer: layer}
+}
+
+func (layer *PktEncLayer) WriteCloser() io.WriteCloser {
+	return &LayerWriteCloser{layer: layer}
 }

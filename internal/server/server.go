@@ -186,7 +186,7 @@ func handleRunShell(layer *pel.PktEncLayer) {
 		return
 	}
 	defer tp.Close()
-	utils.DuplexPipe(tp.StdOut(), tp.StdIn(), layer, buffer1, buffer2)
+	utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), tp.StdOut(), tp.StdIn(), buffer1, buffer2)
 }
 
 func handleSocks5(layer *pel.PktEncLayer) {
@@ -210,20 +210,33 @@ func handleSocks5(layer *pel.PktEncLayer) {
 			return
 		}
 		log.Println("Connection established", conn.RemoteAddr())
-		utils.DuplexPipe(layer, layer, conn, nil, nil)
+		utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), conn, conn, nil, nil)
+		// TODO: make it work with half open connection (like pipe below)
 		log.Println("Connection closed", conn.RemoteAddr())
 		return
 	}
 }
+
 func handlePipe(layer *pel.PktEncLayer) {
 	addrbuf, err := layer.ReadVarLength(nil)
 	if err != nil {
 		return
 	}
 	addr := string(addrbuf)
-	conn, err := net.Dial("tcp", addr)
+	log.Println("Connecting to", addr)
+	parsedAddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
 		return
 	}
-	utils.DuplexPipe(layer, layer, conn, nil, nil)
+	conn, err := net.DialTCP("tcp", nil, parsedAddr)
+	if err != nil {
+		return
+	}
+	defer func() {
+		conn.Close()
+		log.Println("Disconnected", addr)
+	}()
+	// utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), conn, conn, nil, nil)
+	utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), utils.NewTCPConnReadCloser(conn), utils.NewTCPConnWriteCloser(conn), nil, nil)
+
 }
