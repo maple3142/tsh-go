@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"tsh-go/internal/constants"
 	"tsh-go/internal/pel"
@@ -282,34 +281,13 @@ func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 		}
 		layer := waitForConnection()
 		log.Println("Connection established", conn.RemoteAddr())
-		wg := &sync.WaitGroup{}
-		wg.Add(2)
-		go func() {
-			utils.StreamPipe(layer, conn, make([]byte, constants.MaxMessagesize))
-			wg.Done()
-		}()
-		go func() {
-			utils.StreamPipe(conn, layer, make([]byte, constants.MaxMessagesize))
-			wg.Done()
-		}()
-		go func() {
-			wg.Wait()
-			layer.Close()
-			conn.Close()
-			log.Println("Connection closed", conn.RemoteAddr())
-		}()
+		utils.DuplexPipe(conn, conn, layer, nil, nil)
+		log.Println("Connection closed", conn.RemoteAddr())
 	}
 }
 
 func handlePipe(waitForConnection func() *pel.PktEncLayer, arg PipeArgs) {
 	layer := waitForConnection()
 	layer.WriteVarLength([]byte(arg.TargetAddr))
-
-	ch := make(chan struct{})
-	go func() {
-		utils.StreamPipe(layer, os.Stdout, make([]byte, constants.MaxMessagesize))
-		ch <- struct{}{} // we can close once the remote connection is closed, no need to wait for stdin close
-	}()
-	go utils.StreamPipe(os.Stdin, layer, make([]byte, constants.MaxMessagesize))
-	<-ch
+	utils.DuplexPipe(os.Stdin, os.Stdout, layer, nil, nil)
 }

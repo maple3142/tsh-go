@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -211,19 +210,7 @@ func handleSocks5(layer *pel.PktEncLayer) {
 			return
 		}
 		log.Println("Connection established", conn.RemoteAddr())
-		wg := &sync.WaitGroup{}
-		wg.Add(2)
-		go func() {
-			utils.StreamPipe(layer, conn, make([]byte, constants.MaxMessagesize))
-			wg.Done()
-		}()
-		go func() {
-			utils.StreamPipe(conn, layer, make([]byte, constants.MaxMessagesize))
-			wg.Done()
-		}()
-		wg.Wait()
-		layer.Close()
-		conn.Close()
+		utils.DuplexPipe(layer, layer, conn, nil, nil)
 		log.Println("Connection closed", conn.RemoteAddr())
 		return
 	}
@@ -238,12 +225,5 @@ func handlePipe(layer *pel.PktEncLayer) {
 	if err != nil {
 		return
 	}
-
-	ch := make(chan struct{})
-	go func() {
-		utils.StreamPipe(conn, layer, make([]byte, constants.MaxMessagesize))
-		ch <- struct{}{}
-	}()
-	go utils.StreamPipe(layer, conn, make([]byte, constants.MaxMessagesize))
-	<-ch
+	utils.DuplexPipe(layer, layer, conn, nil, nil)
 }

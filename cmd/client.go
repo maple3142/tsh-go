@@ -16,7 +16,6 @@ func init() {
 	clientCmd.AddCommand(clientKillCmd)
 	clientCmd.AddCommand(clientGetCmd)
 	clientCmd.AddCommand(clientPutCmd)
-	clientSocks5Cmd.Flags().StringVarP(&clientSocks5Addr, "addr", "a", "localhost:9050", "Listen address for SOCKS5 proxy")
 	clientCmd.AddCommand(clientSocks5Cmd)
 	clientCmd.AddCommand(clientPipeCmd)
 	rootCmd.AddCommand(clientCmd)
@@ -25,7 +24,6 @@ func init() {
 var clientHost string
 var clientSecret string
 var clientPort int
-var clientSocks5Addr string
 
 var clientCmd = &cobra.Command{
 	Use:     "client -c {target | cb} [-p port] [-s secret] [action | command]",
@@ -85,11 +83,11 @@ var clientPutCmd = &cobra.Command{
 	},
 }
 var clientSocks5Cmd = &cobra.Command{
-	Use:   "socks5 [-a host:port]",
-	Args:  cobra.NoArgs,
+	Use:   "socks5 host:port",
+	Args:  cobra.ExactArgs(1),
 	Short: "Start a local socks5 proxy (not recommended to be used in connect-back mode)",
 	Run: func(cmd *cobra.Command, args []string) {
-		arg := client.Socks5Args{Socks5Addr: clientSocks5Addr}
+		arg := client.Socks5Args{Socks5Addr: args[0]}
 		client.Run([]byte(clientSecret), clientHost, clientPort, constants.SOCKS5, arg)
 	},
 }

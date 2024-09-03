@@ -3,6 +3,7 @@ package utils
 import (
 	"errors"
 	"io"
+	"tsh-go/internal/constants"
 )
 
 var errInvalidWrite = errors.New("invalid write result")
@@ -45,4 +46,21 @@ func StreamPipe(src io.Reader, dst io.WriteCloser, buf []byte) (int64, error) {
 	n, err := CopyBuffer(dst, src, buf)
 	dst.Close()
 	return n, err
+}
+
+func DuplexPipe(localReader io.Reader, localWriter io.WriteCloser, remote io.ReadWriteCloser, bufLocal2Remote []byte, bufRemote2Local []byte) {
+	if bufLocal2Remote == nil {
+		bufLocal2Remote = make([]byte, constants.MaxMessagesize)
+	}
+	if bufRemote2Local == nil {
+		bufRemote2Local = make([]byte, constants.MaxMessagesize)
+	}
+
+	ch := make(chan struct{})
+	go func() {
+		StreamPipe(remote, localWriter, bufRemote2Local)
+		ch <- struct{}{} // we can close once the remote connection is closed, no need to wait for local stream
+	}()
+	go StreamPipe(localReader, remote, bufLocal2Remote)
+	<-ch
 }
