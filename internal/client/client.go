@@ -36,6 +36,10 @@ type Socks5Args struct {
 	Socks5Addr string
 }
 
+type PipeArgs struct {
+	TargetAddr string
+}
+
 func Run(secret []byte, host string, port int, mode uint8, arg any) {
 	var isConnectBack bool
 
@@ -86,6 +90,8 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 		handlePutFile(waitForConnection, arg.(PutFileArgs))
 	case constants.SOCKS5:
 		handleSocks5(waitForConnection, arg.(Socks5Args))
+	case constants.Pipe:
+		handlePipe(waitForConnection, arg.(PipeArgs))
 	}
 }
 
@@ -293,4 +299,17 @@ func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 			log.Println("Connection closed", conn.RemoteAddr())
 		}()
 	}
+}
+
+func handlePipe(waitForConnection func() *pel.PktEncLayer, arg PipeArgs) {
+	layer := waitForConnection()
+	layer.WriteVarLength([]byte(arg.TargetAddr))
+
+	ch := make(chan struct{})
+	go func() {
+		utils.StreamPipe(layer, os.Stdout, make([]byte, constants.MaxMessagesize))
+		ch <- struct{}{} // we can close once the remote connection is closed, no need to wait for stdin close
+	}()
+	go utils.StreamPipe(os.Stdin, layer, make([]byte, constants.MaxMessagesize))
+	<-ch
 }

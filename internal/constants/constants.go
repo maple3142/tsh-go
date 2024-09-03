@@ -12,6 +12,7 @@ const (
 	PutFile  = 2
 	RunShell = 3
 	SOCKS5   = 4
+	Pipe     = 5
 
 	PelSuccess = 1
 	PelFailure = 0

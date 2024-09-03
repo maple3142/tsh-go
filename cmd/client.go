@@ -18,6 +18,7 @@ func init() {
 	clientCmd.AddCommand(clientPutCmd)
 	clientSocks5Cmd.Flags().StringVarP(&clientSocks5Addr, "addr", "a", "localhost:9050", "Listen address for SOCKS5 proxy")
 	clientCmd.AddCommand(clientSocks5Cmd)
+	clientCmd.AddCommand(clientPipeCmd)
 	rootCmd.AddCommand(clientCmd)
 }
 
@@ -84,11 +85,24 @@ var clientPutCmd = &cobra.Command{
 	},
 }
 var clientSocks5Cmd = &cobra.Command{
-	Use:   "socks5 ",
+	Use:   "socks5 [-a host:port]",
 	Args:  cobra.NoArgs,
 	Short: "Start a local socks5 proxy (not recommended to be used in connect-back mode)",
 	Run: func(cmd *cobra.Command, args []string) {
 		arg := client.Socks5Args{Socks5Addr: clientSocks5Addr}
 		client.Run([]byte(clientSecret), clientHost, clientPort, constants.SOCKS5, arg)
+	},
+}
+var clientPipeCmd = &cobra.Command{
+	Use:   "pipe host:port",
+	Args:  cobra.ExactArgs(1),
+	Short: "Redirect stdin/stdout to remote tcp target",
+	Long: `Redirect stdin/stdout to remote tcp target.
+ It is similar to starting socks5 and connect it using 'nc -X 5 -x localhost:9050 host port'.
+ Example use case: ssh -o ProxyCommand='tsh client -c target pipe %h:%p' user@host
+`,
+	Run: func(cmd *cobra.Command, args []string) {
+		arg := client.PipeArgs{TargetAddr: args[0]}
+		client.Run([]byte(clientSecret), clientHost, clientPort, constants.Pipe, arg)
 	},
 }

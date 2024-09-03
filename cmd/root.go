@@ -22,13 +22,17 @@ func init() {
 	rootCmd.Root().CompletionOptions.HiddenDefaultCmd = true // hide completion command
 }
 
+func enableQuietMode() {
+	log.SetOutput(io.Discard)
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "tsh",
 	Short: "Tiny SHell written in Go",
 	Long:  `This is Tiny SHell rewritten in Go programming language.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if quiet {
-			log.SetOutput(io.Discard)
+			enableQuietMode()
 		}
 	},
 }

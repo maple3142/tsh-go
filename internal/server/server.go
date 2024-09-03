@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -105,6 +106,8 @@ func handleGeneric(layer *pel.PktEncLayer) {
 		handleRunShell(layer)
 	case constants.SOCKS5:
 		handleSocks5(layer)
+	case constants.Pipe:
+		handlePipe(layer)
 	}
 }
 
@@ -224,4 +227,23 @@ func handleSocks5(layer *pel.PktEncLayer) {
 		log.Println("Connection closed", conn.RemoteAddr())
 		return
 	}
+}
+func handlePipe(layer *pel.PktEncLayer) {
+	addrbuf, err := layer.ReadVarLength()
+	if err != nil {
+		return
+	}
+	addr := string(addrbuf)
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return
+	}
+
+	ch := make(chan struct{})
+	go func() {
+		utils.StreamPipe(conn, layer, make([]byte, constants.MaxMessagesize))
+		ch <- struct{}{}
+	}()
+	go utils.StreamPipe(layer, conn, make([]byte, constants.MaxMessagesize))
+	<-ch
 }
