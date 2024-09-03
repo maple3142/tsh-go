@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -108,34 +109,31 @@ func handleGeneric(layer *pel.PktEncLayer) {
 }
 
 func handleGetFile(layer *pel.PktEncLayer) {
-	buffer := make([]byte, constants.Bufsize)
-	n, err := layer.Read(buffer)
+	filenamebuf, err := layer.ReadVarLength()
 	if err != nil {
 		return
 	}
-	filename := string(buffer[:n])
+	filename := string(filenamebuf)
 	f, err := os.Open(filename)
 	if err != nil {
 		return
 	}
 	defer f.Close()
-	utils.CopyBuffer(layer, f, buffer)
+	utils.CopyBuffer(layer, f, make([]byte, constants.MaxMessagesize))
+	layer.Close()
 }
 
 func handlePutFile(layer *pel.PktEncLayer) {
-	buffer := make([]byte, constants.Bufsize)
-	var n int
-	var err error
-	n, err = layer.Read(buffer)
+	destbuf, err := layer.ReadVarLength()
 	if err != nil {
 		return
 	}
-	destination := filepath.FromSlash(string(buffer[:n]))
-	n, err = layer.Read(buffer)
+	destination := filepath.FromSlash(string(destbuf))
+	basenamebuf, err := layer.ReadVarLength()
 	if err != nil {
 		return
 	}
-	basename := string(buffer[:n])
+	basename := string(basenamebuf)
 	if runtime.GOOS == "windows" {
 		basename = strings.ReplaceAll(basename, ":", "_")
 		basename = strings.ReplaceAll(basename, "\\", "_")
@@ -152,32 +150,30 @@ func handlePutFile(layer *pel.PktEncLayer) {
 		return
 	}
 	defer f.Close()
-	utils.CopyBuffer(f, layer, buffer)
+	utils.CopyBuffer(f, layer, make([]byte, constants.MaxMessagesize))
 	layer.Close()
 }
 
 func handleRunShell(layer *pel.PktEncLayer) {
-	buffer := make([]byte, constants.Bufsize)
-	buffer2 := make([]byte, constants.Bufsize)
-
-	n, err := layer.Read(buffer)
+	termbuf, err := layer.ReadVarLength()
 	if err != nil {
 		return
 	}
-	term := string(buffer[:n])
+	term := string(termbuf)
 
-	n, err = layer.Read(buffer[:4])
-	if err != nil || n != 4 {
-		return
-	}
-	ws_row := int(buffer[0])<<8 + int(buffer[1])
-	ws_col := int(buffer[2])<<8 + int(buffer[3])
-
-	n, err = layer.Read(buffer)
+	termsize := make([]byte, 4)
+	_, err = io.ReadFull(layer, termsize)
 	if err != nil {
 		return
 	}
-	command := string(buffer[:n])
+	ws_row := int(termsize[0])<<8 + int(termsize[1])
+	ws_col := int(termsize[2])<<8 + int(termsize[3])
+
+	cmdbuf, err := layer.ReadVarLength()
+	if err != nil {
+		return
+	}
+	command := string(cmdbuf)
 
 	tp, err := pty.OpenPty(command, term, uint32(ws_col), uint32(ws_row))
 	if err != nil {
@@ -185,10 +181,10 @@ func handleRunShell(layer *pel.PktEncLayer) {
 	}
 	defer tp.Close()
 	go func() {
-		utils.CopyBuffer(tp.StdIn(), layer, buffer)
+		utils.CopyBuffer(tp.StdIn(), layer, make([]byte, constants.MaxMessagesize))
 		tp.Close()
 	}()
-	utils.CopyBuffer(layer, tp.StdOut(), buffer2)
+	utils.CopyBuffer(layer, tp.StdOut(), make([]byte, constants.MaxMessagesize))
 }
 
 func handleSocks5(layer *pel.PktEncLayer) {

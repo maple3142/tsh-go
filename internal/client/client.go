@@ -106,12 +106,14 @@ func handleGetFile(waitForConnection func() *pel.PktEncLayer, arg GetFileArgs) {
 
 	f, err := os.OpenFile(destination, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	defer f.Close()
 
-	_, err = layer.Write([]byte(arg.Src))
+	err = layer.WriteVarLength([]byte(arg.Src))
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	bar := progressbar.NewOptions(-1,
@@ -144,12 +146,12 @@ func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
 	fsize := fi.Size()
 
 	basename := filepath.Base(arg.Src)
-	_, err = layer.Write([]byte(arg.Dst))
+	err = layer.WriteVarLength([]byte(arg.Dst))
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	_, err = layer.Write([]byte(basename))
+	err = layer.WriteVarLength([]byte(basename))
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -182,7 +184,7 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs)
 	if term == "" {
 		term = "vt100"
 	}
-	_, err = layer.Write([]byte(term))
+	err = layer.WriteVarLength([]byte(term))
 	if err != nil {
 		return
 	}
@@ -198,7 +200,7 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs)
 		return
 	}
 
-	_, err = layer.Write([]byte(arg.Command))
+	err = layer.WriteVarLength([]byte(arg.Command))
 	if err != nil {
 		return
 	}

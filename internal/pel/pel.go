@@ -8,6 +8,8 @@ import (
 	"crypto/subtle"
 	"encoding/binary"
 	"fmt"
+	"io"
+	"math"
 	"net"
 	"time"
 
@@ -127,11 +129,16 @@ func Dial(address string, secret []byte, isInitiator bool) (l *PktEncLayer, err 
 	return layer, nil
 }
 
-func (layer *PktEncLayer) hmac(iv []byte) []byte {
+func (layer *PktEncLayer) hmac(bs ...[]byte) []byte {
 	h := hmac.New(sha256.New, []byte(layer.secret))
-	h.Write(iv)
+	for _, b := range bs {
+		h.Write(b)
+	}
 	return h.Sum(nil)
 }
+
+var key1Tag = []byte{112, 101, 107, 111, 109, 105, 107, 111}
+var key2Tag = []byte{97, 107, 117, 115, 104, 105, 111, 0}
 
 // exchange IV with client and setup the encryption layer
 // return err if the packet read/write operation
@@ -156,7 +163,7 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 		remote_pk := recvbuf[:curve25519.PointSize]
 		digest := recvbuf[curve25519.PointSize:]
 		if subtle.ConstantTimeCompare(digest, layer.hmac(remote_pk)) != 1 {
-			return NewHandshakeError(constants.PelFailure, "Public key digest verification failed  (perhaps secret does not match?)")
+			return NewHandshakeError(constants.PelFailure, "Public key digest verification failed (perhaps secret does not match?)")
 		}
 
 		// send public key and digest
@@ -173,19 +180,15 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 		if err != nil {
 			return NewHandshakeError(constants.PelFailure, "Failed to derive shared secret")
 		}
-		randomness := layer.hmac(shared_secret)
-		rand1 := randomness[:16]
-		rand2 := randomness[16:]
+		key1 := layer.hmac(shared_secret, key1Tag)
+		key2 := layer.hmac(shared_secret, key2Tag)
 
-		var key []byte
 		var aead cipher.AEAD
 
-		key = layer.hmac(rand1)
-		aead, _ = chacha20poly1305.New(key)
+		aead, _ = chacha20poly1305.New(key2)
 		layer.sendAead = aead
 
-		key = layer.hmac(rand2)
-		aead, _ = chacha20poly1305.New(key)
+		aead, _ = chacha20poly1305.New(key1)
 		layer.recvAead = aead
 		return nil
 	} else {
@@ -215,19 +218,15 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 		if err != nil {
 			return NewHandshakeError(constants.PelFailure, "Failed to derive shared secret")
 		}
-		randomness := layer.hmac(shared_secret)
-		rand1 := randomness[:16]
-		rand2 := randomness[16:]
+		key1 := layer.hmac(shared_secret, key1Tag)
+		key2 := layer.hmac(shared_secret, key2Tag)
 
-		var key []byte
 		var aead cipher.AEAD
 
-		key = layer.hmac(rand2)
-		aead, _ = chacha20poly1305.New(key)
+		aead, _ = chacha20poly1305.New(key1)
 		layer.sendAead = aead
 
-		key = layer.hmac(rand1)
-		aead, _ = chacha20poly1305.New(key)
+		aead, _ = chacha20poly1305.New(key2)
 		layer.recvAead = aead
 		return nil
 	}
@@ -285,13 +284,9 @@ func (layer *PktEncLayer) write(p []byte) (int, error) {
 
 	layer.sendAead.Seal(nonce, nonce, p, additionalData) // append ciphertext (with tag) to nonce
 
-	idx := 0
-	for idx < pkt_length {
-		n, err := layer.conn.Write(buffer[idx:pkt_length])
-		if err != nil {
-			return 0, err
-		}
-		idx += n
+	_, err := layer.conn.Write(buffer)
+	if err != nil {
+		return 0, err
 	}
 	layer.sendPktCtr++
 	return length, nil
@@ -359,16 +354,8 @@ func (layer *PktEncLayer) read(p []byte) (int, error) {
 }
 
 func (layer *PktEncLayer) readConnUntilFilled(p []byte) error {
-	idx := 0
-	tot := len(p)
-	for idx < tot {
-		n, err := layer.conn.Read(p[idx:tot])
-		if err != nil {
-			return err
-		}
-		idx += n
-	}
-	return nil
+	_, err := io.ReadFull(layer.conn, p)
+	return err
 }
 
 func (layer *PktEncLayer) readConnUntilFilledTimeout(p []byte, timeout time.Duration) error {
@@ -378,4 +365,31 @@ func (layer *PktEncLayer) readConnUntilFilledTimeout(p []byte, timeout time.Dura
 		return err
 	}
 	return nil
+}
+
+func (layer *PktEncLayer) WriteVarLength(b []byte) error {
+	length := len(b)
+	if length > math.MaxUint16 {
+		return NewPelError(constants.PelBadMsgLength)
+	}
+	buf := make([]byte, 2+length)
+	binary.LittleEndian.PutUint16(buf, uint16(length))
+	copy(buf[2:], b)
+	_, err := layer.Write(buf)
+	return err
+}
+
+func (layer *PktEncLayer) ReadVarLength() ([]byte, error) {
+	tmp := make([]byte, 2)
+	_, err := io.ReadFull(layer, tmp)
+	if err != nil {
+		return nil, err
+	}
+	length := int(binary.LittleEndian.Uint16(tmp))
+	buf := make([]byte, length)
+	_, err = io.ReadFull(layer, buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf, nil
 }
