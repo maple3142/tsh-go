@@ -215,11 +215,11 @@ func handleSocks5(layer *pel.PktEncLayer) {
 		wg := &sync.WaitGroup{}
 		wg.Add(2)
 		go func() {
-			utils.StreamPipe(layer, conn, make([]byte, 1024))
+			utils.StreamPipe(layer, conn, make([]byte, constants.MaxMessagesize))
 			wg.Done()
 		}()
 		go func() {
-			utils.StreamPipe(conn, layer, make([]byte, 1024))
+			utils.StreamPipe(conn, layer, make([]byte, constants.MaxMessagesize))
 			wg.Done()
 		}()
 		wg.Wait()

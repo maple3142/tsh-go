@@ -247,7 +247,7 @@ func (layer *PktEncLayer) Write(p []byte) (int, error) {
 
 func (layer *PktEncLayer) write(p []byte) (int, error) {
 	length := len(p)
-	if length <= 0 || length > constants.Bufsize {
+	if length <= 0 || length > constants.MaxMessagesize {
 		return 0, NewPelError(constants.PelBadMsgLength)
 	}
 
