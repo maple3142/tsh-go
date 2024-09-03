@@ -98,25 +98,8 @@ func handleGetFile(waitForConnection func() *pel.PktEncLayer, arg GetFileArgs) {
 	basename = filepath.Base(filepath.FromSlash(basename))
 
 	destination := arg.Dst
+	var writer io.Writer
 
-	// if dst is a directory, save file to dst/basename
-	// otherwise, save file to dst
-	if fi, err := os.Stat(destination); err == nil && fi.IsDir() {
-		destination = filepath.Join(destination, basename)
-	}
-
-	f, err := os.OpenFile(destination, os.O_CREATE|os.O_RDWR, 0644)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	defer f.Close()
-
-	err = layer.WriteVarLength([]byte(arg.Src))
-	if err != nil {
-		log.Println(err)
-		return
-	}
 	bar := progressbar.NewOptions(-1,
 		progressbar.OptionSetWidth(20),
 		progressbar.OptionEnableColorCodes(true),
@@ -124,30 +107,77 @@ func handleGetFile(waitForConnection func() *pel.PktEncLayer, arg GetFileArgs) {
 		progressbar.OptionShowCount(),
 		progressbar.OptionSetDescription("Downloading"),
 		progressbar.OptionSpinnerType(22),
+		progressbar.OptionSetWriter(os.Stderr),
 	)
-	utils.CopyBuffer(io.MultiWriter(f, bar), layer, buffer)
-	log.Print("\nDone.\n")
+
+	if arg.Dst == "-" {
+		// if dst is "-", write to stdout
+		writer = os.Stdout
+		if !terminal.IsTerminal(int(os.Stdout.Fd())) {
+			// progress bar for file transfer if stdout is not a tty
+			writer = io.MultiWriter(writer, bar)
+		}
+	} else {
+		// if dst is a directory, save file to dst/basename
+		// otherwise, save file to dst
+		if fi, err := os.Stat(destination); err == nil && fi.IsDir() {
+			destination = filepath.Join(destination, basename)
+		}
+
+		f, err := os.OpenFile(destination, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		defer f.Close()
+
+		writer = io.MultiWriter(f, bar)
+	}
+
+	err := layer.WriteVarLength([]byte(arg.Src))
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	_, err = utils.CopyBuffer(writer, layer, buffer)
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
 }
 
 func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
 	layer := waitForConnection()
 	defer layer.Close()
-	buffer := make([]byte, constants.MaxMessagesize)
-	f, err := os.Open(arg.Src)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	fsize := fi.Size()
 
-	basename := filepath.Base(arg.Src)
-	err = layer.WriteVarLength([]byte(arg.Dst))
+	var reader io.Reader
+	var fsize int64
+	var basename string
+
+	if arg.Src == "-" {
+		// if src is "-", read from stdin
+		reader = os.Stdin
+		fsize = -1
+		basename = "stdin"
+	} else {
+		f, err := os.Open(arg.Src)
+		if err != nil {
+			log.Println(err)
+			os.Exit(1)
+		}
+		defer f.Close()
+		reader = f
+
+		fi, err := f.Stat()
+		if err != nil {
+			log.Println(err)
+			os.Exit(1)
+		}
+		fsize = fi.Size()
+		basename = filepath.Base(arg.Src)
+	}
+
+	err := layer.WriteVarLength([]byte(arg.Dst))
 	if err != nil {
 		log.Println(err)
 		return
@@ -157,15 +187,28 @@ func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
 		log.Println(err)
 		return
 	}
+
 	bar := progressbar.NewOptions(int(fsize),
 		progressbar.OptionSetWidth(20),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionShowCount(),
 		progressbar.OptionSetDescription("Uploading"),
+		progressbar.OptionSetWriter(os.Stderr),
 	)
-	utils.CopyBuffer(io.MultiWriter(layer, bar), f, buffer)
-	log.Print("\nDone.\n")
+	var writer io.Writer = layer
+	if reader != os.Stdin || (reader == os.Stdin && !terminal.IsTerminal(int(os.Stdin.Fd()))) {
+		// show progress bar if:
+		//   - src is not stdin
+		//   - src is stdin but stdin is not a tty
+		writer = io.MultiWriter(layer, bar)
+	}
+
+	_, err = utils.CopyBuffer(writer, reader, make([]byte, constants.MaxMessagesize))
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
 }
 
 func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs) {

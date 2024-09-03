@@ -145,7 +145,7 @@ func handlePutFile(layer *pel.PktEncLayer) {
 		destination = filepath.Join(destination, basename)
 	}
 
-	f, err := os.OpenFile(destination, os.O_CREATE|os.O_RDWR, 0644)
+	f, err := os.OpenFile(destination, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
 		return
 	}

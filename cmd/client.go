@@ -62,6 +62,7 @@ var clientGetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	Short: "Get file from remote",
 	Long: `Get file from remote, the destination can be a directory or a file.
+ The source can be '-' to read from stdin.
  If the destination is a directory, the file will be saved with the same name as the source file.
  If the destination is a file or not exist, the file will be saved with the specified name.`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -74,6 +75,7 @@ var clientPutCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	Short: "Put local file to remote",
 	Long: `Put local file to remote, the destination can be a directory or a file.
+ The destination can be '-' to write to stdout.
  If the destination is a directory, the file will be saved with the same name as the source file.
  If the destination is a file or not exist, the file will be saved with the specified name.`,
 	Run: func(cmd *cobra.Command, args []string) {
