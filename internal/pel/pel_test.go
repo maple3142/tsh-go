@@ -13,32 +13,6 @@ var testSecret = []byte("just some secret")
 
 const testAddress = "127.0.0.1:2333"
 
-func (layer *PktEncLayer) WriteFull(p []byte) (int, error) {
-	total := len(p)
-	idx := 0
-	for idx < total {
-		n, err := layer.Write(p[idx:min(idx+constants.MaxMessagesize, total)])
-		if err != nil {
-			return idx, err
-		}
-		idx += n
-	}
-	return idx, nil
-}
-
-func (layer *PktEncLayer) ReadFull(p []byte) error {
-	total := len(p)
-	idx := 0
-	for idx < total {
-		n, err := layer.Read(p[idx:total])
-		if err != nil {
-			return err
-		}
-		idx += n
-	}
-	return nil
-}
-
 func runProtocolTest(t *testing.T, fn func(*PktEncLayer, *PktEncLayer)) {
 	listener, err := Listen(testAddress, testSecret, false)
 	if err != nil {
@@ -72,14 +46,14 @@ func TestProtocolBasic(t *testing.T) {
 	rand.Read(data2)
 	runProtocolTest(t, func(client, server *PktEncLayer) {
 		client.Write(data1)
-		client.WriteFull(data2)
+		client.Write(data2)
 		recv1 := make([]byte, len(data1))
 		_, err := server.Read(recv1)
 		if err != nil {
 			t.Fatal("Read 1", err)
 		}
 		recv2 := make([]byte, len(data2))
-		err = server.ReadFull(recv2)
+		_, err = io.ReadFull(server, recv2)
 		if err != nil {
 			t.Fatal("Read 2", err)
 		}
@@ -91,14 +65,14 @@ func TestProtocolBasic(t *testing.T) {
 		}
 
 		server.Write(data1)
-		server.WriteFull(data2)
+		server.Write(data2)
 		recv1 = make([]byte, len(data1))
 		_, err = client.Read(recv1)
 		if err != nil {
 			t.Fatal("Read 1", err)
 		}
 		recv2 = make([]byte, len(data2))
-		err = client.ReadFull(recv2)
+		_, err = io.ReadFull(client, recv2)
 		if err != nil {
 			t.Fatal("Read 2", err)
 		}
@@ -145,7 +119,7 @@ func TestProtocolSmallWrite(t *testing.T) {
 				t.Fatal("Write " + err.Error())
 			}
 		}
-		err := client.ReadFull(recv)
+		_, err := io.ReadFull(client, recv)
 		if err != nil {
 			t.Fatal("Read " + err.Error())
 		}

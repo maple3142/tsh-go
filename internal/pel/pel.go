@@ -237,8 +237,26 @@ func (layer *PktEncLayer) Close() error {
 	return layer.conn.Close()
 }
 
-func (layer *PktEncLayer) Write(p []byte) (int, error) {
+func (layer *PktEncLayer) WritePartial(p []byte) (int, error) {
+	// this may write partial data
+	// returns (number of bytes written, error)
+	// and the number of bytes written may be less than len(p) even if err == nil
 	return layer.write(p[:min(len(p), constants.MaxMessagesize)])
+}
+
+func (layer *PktEncLayer) Write(p []byte) (int, error) {
+	// io.Writer requires that if err == nil, n == len(p)
+	// so we need to write all data in p
+	total := len(p)
+	idx := 0
+	for idx < total {
+		n, err := layer.WritePartial(p[idx:total])
+		if err != nil {
+			return idx, err
+		}
+		idx += n
+	}
+	return idx, nil
 }
 
 // packet format
