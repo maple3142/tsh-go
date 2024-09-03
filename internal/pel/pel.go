@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"math"
 	"net"
 	"time"
 
@@ -369,7 +368,7 @@ func (layer *PktEncLayer) readConnUntilFilledTimeout(p []byte, timeout time.Dura
 
 func (layer *PktEncLayer) WriteVarLength(b []byte) error {
 	length := len(b)
-	if length > math.MaxUint16 {
+	if length > constants.MaxMessagesize-2 {
 		return NewPelError(constants.PelBadMsgLength)
 	}
 	buf := make([]byte, 2+length)
@@ -379,17 +378,21 @@ func (layer *PktEncLayer) WriteVarLength(b []byte) error {
 	return err
 }
 
-func (layer *PktEncLayer) ReadVarLength() ([]byte, error) {
-	tmp := make([]byte, 2)
-	_, err := io.ReadFull(layer, tmp)
+func (layer *PktEncLayer) ReadVarLength(buf []byte) ([]byte, error) {
+	if cap(buf) < 2 {
+		buf = make([]byte, 2)
+	}
+	_, err := io.ReadFull(layer, buf[:2])
 	if err != nil {
 		return nil, err
 	}
-	length := int(binary.LittleEndian.Uint16(tmp))
-	buf := make([]byte, length)
-	_, err = io.ReadFull(layer, buf)
+	length := int(binary.LittleEndian.Uint16(buf[:2]))
+	if cap(buf) < length {
+		buf = make([]byte, length)
+	}
+	_, err = io.ReadFull(layer, buf[:length])
 	if err != nil {
 		return nil, err
 	}
-	return buf, nil
+	return buf[:length], nil
 }

@@ -111,7 +111,8 @@ func handleGeneric(layer *pel.PktEncLayer) {
 }
 
 func handleGetFile(layer *pel.PktEncLayer) {
-	filenamebuf, err := layer.ReadVarLength()
+	buffer := make([]byte, constants.MaxMessagesize)
+	filenamebuf, err := layer.ReadVarLength(buffer)
 	if err != nil {
 		return
 	}
@@ -121,17 +122,18 @@ func handleGetFile(layer *pel.PktEncLayer) {
 		return
 	}
 	defer f.Close()
-	utils.CopyBuffer(layer, f, make([]byte, constants.MaxMessagesize))
+	utils.CopyBuffer(layer, f, buffer)
 	layer.Close()
 }
 
 func handlePutFile(layer *pel.PktEncLayer) {
-	destbuf, err := layer.ReadVarLength()
+	buffer := make([]byte, constants.MaxMessagesize)
+	destbuf, err := layer.ReadVarLength(buffer)
 	if err != nil {
 		return
 	}
 	destination := filepath.FromSlash(string(destbuf))
-	basenamebuf, err := layer.ReadVarLength()
+	basenamebuf, err := layer.ReadVarLength(buffer)
 	if err != nil {
 		return
 	}
@@ -152,12 +154,14 @@ func handlePutFile(layer *pel.PktEncLayer) {
 		return
 	}
 	defer f.Close()
-	utils.CopyBuffer(f, layer, make([]byte, constants.MaxMessagesize))
+	utils.CopyBuffer(f, layer, buffer)
 	layer.Close()
 }
 
 func handleRunShell(layer *pel.PktEncLayer) {
-	termbuf, err := layer.ReadVarLength()
+	buffer1 := make([]byte, constants.MaxMessagesize)
+	buffer2 := make([]byte, constants.MaxMessagesize)
+	termbuf, err := layer.ReadVarLength(buffer1)
 	if err != nil {
 		return
 	}
@@ -171,7 +175,7 @@ func handleRunShell(layer *pel.PktEncLayer) {
 	ws_row := int(termsize[0])<<8 + int(termsize[1])
 	ws_col := int(termsize[2])<<8 + int(termsize[3])
 
-	cmdbuf, err := layer.ReadVarLength()
+	cmdbuf, err := layer.ReadVarLength(buffer1)
 	if err != nil {
 		return
 	}
@@ -182,11 +186,7 @@ func handleRunShell(layer *pel.PktEncLayer) {
 		return
 	}
 	defer tp.Close()
-	go func() {
-		utils.CopyBuffer(tp.StdIn(), layer, make([]byte, constants.MaxMessagesize))
-		tp.Close()
-	}()
-	utils.CopyBuffer(layer, tp.StdOut(), make([]byte, constants.MaxMessagesize))
+	utils.DuplexPipe(tp.StdOut(), tp.StdIn(), layer, buffer1, buffer2)
 }
 
 func handleSocks5(layer *pel.PktEncLayer) {
@@ -216,7 +216,7 @@ func handleSocks5(layer *pel.PktEncLayer) {
 	}
 }
 func handlePipe(layer *pel.PktEncLayer) {
-	addrbuf, err := layer.ReadVarLength()
+	addrbuf, err := layer.ReadVarLength(nil)
 	if err != nil {
 		return
 	}

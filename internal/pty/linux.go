@@ -15,11 +15,11 @@ type LinuxPtyWrapper struct {
 	ptmx *os.File
 }
 
-func (pw LinuxPtyWrapper) StdIn() io.Writer {
+func (pw LinuxPtyWrapper) StdIn() io.WriteCloser {
 	return pw.ptmx
 }
 
-func (pw LinuxPtyWrapper) StdOut() io.Reader {
+func (pw LinuxPtyWrapper) StdOut() io.ReadCloser {
 	return pw.ptmx
 }
 

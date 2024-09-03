@@ -26,11 +26,11 @@ type WinPtyWrapper struct {
 	wp *winpty.WinPTY
 }
 
-func (pw WinPtyWrapper) StdIn() io.Writer {
+func (pw WinPtyWrapper) StdIn() io.WriteCloser {
 	return pw.wp.StdIn
 }
 
-func (pw WinPtyWrapper) StdOut() io.Reader {
+func (pw WinPtyWrapper) StdOut() io.ReadCloser {
 	return pw.wp.StdOut
 }
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"io"
-	"math"
 	"testing"
 	"time"
 	"tsh-go/internal/constants"
@@ -156,7 +155,7 @@ func TestProtocolVarLength(t *testing.T) {
 		if err != nil {
 			t.Fatal("Write", err)
 		}
-		recv, err := server.ReadVarLength()
+		recv, err := server.ReadVarLength(nil)
 		if err != nil {
 			t.Fatal("Read", err)
 		}
@@ -164,13 +163,13 @@ func TestProtocolVarLength(t *testing.T) {
 			t.Fatal("data mismatch")
 		}
 
-		data2 := make([]byte, math.MaxUint16)
+		data2 := make([]byte, constants.MaxMessagesize-2)
 		rand.Read(data2)
 		err = server.WriteVarLength(data2)
 		if err != nil {
 			t.Fatal("Write", err)
 		}
-		recv, err = client.ReadVarLength()
+		recv, err = client.ReadVarLength(make([]byte, 123))
 		if err != nil {
 			t.Fatal("Read", err)
 		}
@@ -179,7 +178,7 @@ func TestProtocolVarLength(t *testing.T) {
 		}
 
 		// should fail if the length is too long
-		toolong := make([]byte, math.MaxUint16+1)
+		toolong := make([]byte, constants.MaxMessagesize-2+1)
 		err = server.WriteVarLength(toolong)
 		if err == nil {
 			t.Fatal("Write", err)

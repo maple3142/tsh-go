@@ -3,7 +3,7 @@ package pty
 import "io"
 
 type PtyWrapper interface {
-	StdIn() io.Writer
-	StdOut() io.Reader
+	StdIn() io.WriteCloser
+	StdOut() io.ReadCloser
 	Close()
 }
