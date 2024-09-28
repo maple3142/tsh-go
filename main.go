@@ -3,16 +3,16 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 	"tsh-go/cmd"
 )
 
-var variant string = "tsh"
+var defArgs string = ""
 
 func main() {
 	log.SetFlags(0)
-	if variant == "tshd" && len(os.Args) == 1 {
-		// if this is tshd and no arguments passed, run as daemon with default configurations
-		os.Args = append(os.Args, "server", "--daemon")
+	if defArgs != "" && len(os.Args) == 1 {
+		os.Args = append(os.Args, strings.Split(defArgs, " ")...)
 	}
 	cmd.Execute()
 }

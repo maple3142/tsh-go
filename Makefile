@@ -1,9 +1,10 @@
-BASE_GOFLAGS=-trimpath
-BASE_LD_FLAGS=-s -w
+BASE_GOFLAGS ?= -trimpath
+BASE_LD_FLAGS ?= -s -w
+TSHD_DEFAULT_ARGS ?= s -d
 GOFLAGS_LINUX=${BASE_GOFLAGS} -ldflags "${BASE_LD_FLAGS}"
 GOFLAGS_WINDOWS=${BASE_GOFLAGS} -ldflags "${BASE_LD_FLAGS}" #-H=windowsgui"
-GOFLAGS_LINUX_TSHD=${BASE_GOFLAGS} -ldflags "${BASE_LD_FLAGS} -X main.variant=tshd"
-GOFLAGS_WINDOWS_TSHD=${BASE_GOFLAGS} -ldflags "${BASE_LD_FLAGS} -X main.variant=tshd" #-H=windowsgui"
+GOFLAGS_LINUX_TSHD=${BASE_GOFLAGS} -ldflags '${BASE_LD_FLAGS} -X "main.defaultFlags=${TSHD_DEFAULT_ARGS}"'
+GOFLAGS_WINDOWS_TSHD=${BASE_GOFLAGS} -ldflags '${BASE_LD_FLAGS} -X "main.defaultFlags=${TSHD_DEFAULT_ARGS}"' #-H=windowsgui"
 GOOS ?= linux
 GOARCH ?= amd64
 
@@ -17,6 +18,9 @@ all:
 	@echo
 	@echo "It can be compiled to other unix-like platforms supported by go compiler:"
 	@echo "	GOOS=freebsd GOARCH=386 make unix"
+	@echo 
+	@echo "It is possible to set the default arguments for tshd:"
+	@echo "TSHD_DEFAULT_ARGS='s -d -c 127.0.0.1 -p 7890 -s 123' make linux"
 	@echo
 	@echo "Get more with:"
 	@echo "	go tool dist list"
