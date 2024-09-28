@@ -52,21 +52,23 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 	waitForConnection := func() *pel.PktEncLayer {
 		if isConnectBack {
 			addr := fmt.Sprintf(":%d", port)
-			connectBackListener, err = pel.Listen(addr, secret, false)
-			if err != nil {
-				log.Println(err)
-				os.Exit(1)
+			for {
+				connectBackListener, err = pel.Listen(addr, secret, false)
+				if err != nil {
+					log.Println(err)
+					os.Exit(1)
+				}
+				log.Print("Waiting for the server to connect...")
+				layer, err := connectBackListener.Accept()
+				connectBackListener.Close()
+				if err != nil {
+					log.Printf("Accept failed: %v\n", err)
+					continue
+				}
+				log.Println("connected.")
+				layer.Write([]byte{mode})
+				return layer
 			}
-			log.Print("Waiting for the server to connect...")
-			layer, err := connectBackListener.Accept()
-			log.Println("connected.")
-			connectBackListener.Close()
-			if err != nil {
-				log.Println(err)
-				os.Exit(1)
-			}
-			layer.Write([]byte{mode})
-			return layer
 		} else {
 			addr := fmt.Sprintf("%s:%d", host, port)
 			layer, err := pel.Dial(addr, secret, true)
