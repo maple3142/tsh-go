@@ -289,10 +289,12 @@ func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 			log.Println(err)
 			continue
 		}
-		layer := waitForConnection()
-		log.Println("Connection established", conn.RemoteAddr())
-		utils.DuplexPipe(conn, conn, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
-		log.Println("Connection closed", conn.RemoteAddr())
+		go func() {
+			layer := waitForConnection()
+			log.Println("Connection established", conn.RemoteAddr())
+			utils.DuplexPipe(conn, conn, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
+			log.Println("Connection closed", conn.RemoteAddr())
+		}()
 	}
 }
 
