@@ -207,7 +207,7 @@ func handleRunShellNoTTY(layer *pel.PktEncLayer) {
 	}
 	combinedOutput := io.MultiReader(stdout, stderr)
 	go cmd.Run()
-	utils.DuplexPipeFull(layer.ReadCloser(), layer.WriteCloser(), combinedOutput, stdin, buffer1, nil, 0)
+	utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), combinedOutput, stdin, buffer1, nil)
 }
 
 func handleSocks5(layer *pel.PktEncLayer) {

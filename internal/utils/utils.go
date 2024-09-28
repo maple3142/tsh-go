@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"time"
 	"tsh-go/internal/constants"
 )
 
@@ -49,12 +48,7 @@ func StreamPipe(src io.Reader, dst io.WriteCloser, buf []byte) (int64, error) {
 	return CopyBuffer(dst, src, buf)
 }
 
-const DefaultCloseWaitTimeout = 1 * time.Second
-
 func DuplexPipe(localReader io.Reader, localWriter io.WriteCloser, remoteReader io.Reader, remoteWriter io.WriteCloser, bufLocal2Remote []byte, bufRemote2Local []byte) {
-	DuplexPipeFull(localReader, localWriter, remoteReader, remoteWriter, bufLocal2Remote, bufRemote2Local, DefaultCloseWaitTimeout)
-}
-func DuplexPipeFull(localReader io.Reader, localWriter io.WriteCloser, remoteReader io.Reader, remoteWriter io.WriteCloser, bufLocal2Remote []byte, bufRemote2Local []byte, closeWaitTimeout time.Duration) {
 	// local refers to the connection that related to the client
 	// remote refers to the target that the client wants to connect to
 	if bufLocal2Remote == nil {
@@ -75,7 +69,6 @@ func DuplexPipeFull(localReader io.Reader, localWriter io.WriteCloser, remoteRea
 		StreamPipe(localReader, remoteWriter, bufLocal2Remote)
 		// log.Println("localReader closed", time.Now())
 		// same as `nc -w ? ...` behavior
-		time.Sleep(closeWaitTimeout)
 		remoteWriter.Close()
 	}()
 	<-ch
