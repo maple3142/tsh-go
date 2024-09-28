@@ -9,13 +9,13 @@ require (
 	github.com/denisbrodbeck/machineid v1.0.1
 	github.com/gonutz/ide v0.0.0-20200517034207-df64a3832118
 	github.com/iamacarpet/go-winpty v1.0.4
-	github.com/schollz/progressbar/v3 v3.14.6
+	github.com/schollz/progressbar/v3 v3.16.0
 	github.com/spf13/cobra v1.8.1
 	github.com/txthinking/socks5 v0.0.0-20230325130024-4230056ae301
-	golang.org/x/crypto v0.26.0
-	golang.org/x/net v0.28.0
+	golang.org/x/crypto v0.27.0
+	golang.org/x/net v0.29.0
 	golang.org/x/sys v0.25.0
-	golang.org/x/term v0.23.0
+	golang.org/x/term v0.24.0
 )
 
 require (
