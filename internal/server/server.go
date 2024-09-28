@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"tsh-go/internal/bg"
 	"tsh-go/internal/constants"
 	"tsh-go/internal/pel"
 	"tsh-go/internal/pty"
@@ -22,24 +23,13 @@ import (
 	"github.com/txthinking/socks5"
 )
 
-func RunInBackground() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(exe, os.Args[1:]...)
-	cmd.Env = append(os.Environ(), "TSH_RUNNING_AS_DAEMON=1")
-	cmd.Start()
-	return nil
-}
-
 func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 	var isDaemon bool
 	if os.Getenv("TSH_RUNNING_AS_DAEMON") == "1" {
 		isDaemon = true
 	}
 	if runAsDaemon && !isDaemon {
-		if RunInBackground() != nil {
+		if bg.RunInBackground() != nil {
 			log.Panicln("Failed to run as daemon")
 			os.Exit(1)
 		}
