@@ -18,9 +18,8 @@ import (
 	"tsh-go/internal/constants"
 	"tsh-go/internal/pel"
 	"tsh-go/internal/pty"
+	"tsh-go/internal/socks5"
 	"tsh-go/internal/utils"
-
-	"github.com/txthinking/socks5"
 )
 
 func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
@@ -211,7 +210,7 @@ func handleRunShellNoTTY(layer *pel.PktEncLayer) {
 }
 
 func handleSocks5(layer *pel.PktEncLayer) {
-	srv, _ := socks5.NewClassicServer("127.0.0.1:9050", "127.0.0.1", "", "", 0, 60)
+	srv, _ := socks5.NewClassicServer("", "")
 	srv.SupportedCommands = []byte{socks5.CmdConnect} // TODO: CmdUDP
 	if err := srv.Negotiate(layer); err != nil {
 		log.Println(err)
