@@ -55,6 +55,8 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 			layer, err := ln.Accept()
 			if err == nil {
 				go handleGeneric(layer)
+			} else {
+				log.Printf("Accept failed: %v\n", err)
 			}
 		}
 	} else {
@@ -64,6 +66,8 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 			layer, err := pel.Dial(addr, secret, true)
 			if err == nil {
 				go handleGeneric(layer)
+			} else {
+				log.Printf("Dial failed: %v\n", err)
 			}
 			time.Sleep(time.Duration(delay) * time.Second)
 		}
