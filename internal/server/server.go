@@ -26,6 +26,7 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 	var isDaemon bool
 	if os.Getenv("TSH_RUNNING_AS_DAEMON") == "1" {
 		isDaemon = true
+		os.Unsetenv("TSH_RUNNING_AS_DAEMON")
 	}
 	if runAsDaemon && !isDaemon {
 		if bg.RunInBackground() != nil {
