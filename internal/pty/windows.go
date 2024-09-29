@@ -5,8 +5,9 @@ package pty
 
 import (
 	"bytes"
-	"crypto/sha1"
+	"compress/gzip"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -73,6 +74,22 @@ func winptyInit() {
 	}
 }
 
+func WriteFileFromGZ(name string, data []byte, perm os.FileMode) error {
+	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	r, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(f, r)
+	if err1 := f.Close(); err1 != nil && err == nil {
+		err = err1
+	}
+	return err
+}
+
 func tryDropWinpty(dstdir string) bool {
 	checksum1, checksum2 := getWinptyChecksum()
 	winptyAgentPath := path.Join(dstdir, "winpty-agent.exe")
@@ -80,11 +97,11 @@ func tryDropWinpty(dstdir string) bool {
 	if fi, err := os.Stat(dstdir); os.IsNotExist(err) {
 		err := os.Mkdir(dstdir, 0700)
 		if err == nil {
-			err := os.WriteFile(winptyAgentPath, resources.WinptyAgent, 0700)
+			err := WriteFileFromGZ(winptyAgentPath, resources.WinptyAgent, 0700)
 			if err != nil {
 				return false
 			}
-			err = os.WriteFile(winptyDllPath, resources.WinptyDll, 0600)
+			err = WriteFileFromGZ(winptyDllPath, resources.WinptyDll, 0600)
 			if err != nil {
 				return false
 			}
@@ -105,12 +122,14 @@ func tryDropWinpty(dstdir string) bool {
 }
 
 func getWinptyChecksum() ([]byte, []byte) {
-	h := sha1.New()
-	h.Write(resources.WinptyAgent)
-	a := h.Sum(nil)
-	h.Reset()
-	h.Write(resources.WinptyDll)
-	d := h.Sum(nil)
+	a, err := hex.DecodeString(resources.WinptyAgentSha256)
+	if err != nil {
+		panic(err)
+	}
+	d, err := hex.DecodeString(resources.WinptyDllSha256)
+	if err != nil {
+		panic(err)
+	}
 	return a, d
 }
 
@@ -120,7 +139,7 @@ func getFileChecksum(path string) []byte {
 		return nil
 	}
 	defer f.Close()
-	h := sha1.New()
+	h := sha256.New()
 	if _, err := io.Copy(h, f); err == nil {
 		return h.Sum(nil)
 	}

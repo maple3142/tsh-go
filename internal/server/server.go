@@ -81,7 +81,10 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 func handleGeneric(stream utils.DuplexStreamEx) {
 	defer stream.Close()
 	defer func() {
-		recover()
+		err := recover()
+		if err != nil {
+			log.Println(err)
+		}
 	}()
 	buffer := make([]byte, 1)
 	n, err := stream.Read(buffer)
