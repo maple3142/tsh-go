@@ -1,5 +1,5 @@
 BASE_GOFLAGS ?= -trimpath
-BASE_LD_FLAGS ?= -s -w
+BASE_LD_FLAGS ?= -s -w -buildid=
 TSHD_DEFAULT_ARGS ?= s -d -q
 GOFLAGS_LINUX=${BASE_GOFLAGS} -ldflags "${BASE_LD_FLAGS}"
 GOFLAGS_WINDOWS=${BASE_GOFLAGS} -ldflags "${BASE_LD_FLAGS}" #-H=windowsgui"
