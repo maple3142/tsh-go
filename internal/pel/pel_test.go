@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 	"tsh-go/internal/constants"
+	"tsh-go/internal/utils"
 )
 
 var testSecret = []byte("just some secret")
@@ -151,11 +152,11 @@ func TestProtocolVarLength(t *testing.T) {
 	runProtocolTest(t, func(client, server *PktEncLayer) {
 		data := make([]byte, 12345)
 		rand.Read(data)
-		err := client.WriteVarLength(data)
+		err := utils.WriteVarLength(client, data)
 		if err != nil {
 			t.Fatal("Write", err)
 		}
-		recv, err := server.ReadVarLength(nil)
+		recv, err := utils.ReadVarLength(server, nil)
 		if err != nil {
 			t.Fatal("Read", err)
 		}
@@ -165,11 +166,11 @@ func TestProtocolVarLength(t *testing.T) {
 
 		data2 := make([]byte, constants.MaxMessagesize-2)
 		rand.Read(data2)
-		err = server.WriteVarLength(data2)
+		err = utils.WriteVarLength(server, data2)
 		if err != nil {
 			t.Fatal("Write", err)
 		}
-		recv, err = client.ReadVarLength(make([]byte, 123))
+		recv, err = utils.ReadVarLength(client, make([]byte, 123))
 		if err != nil {
 			t.Fatal("Read", err)
 		}
@@ -179,7 +180,7 @@ func TestProtocolVarLength(t *testing.T) {
 
 		// should fail if the length is too long
 		toolong := make([]byte, constants.MaxMessagesize-2+1)
-		err = server.WriteVarLength(toolong)
+		err = utils.WriteVarLength(server, toolong)
 		if err == nil {
 			t.Fatal("Write", err)
 		}

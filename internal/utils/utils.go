@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"tsh-go/internal/constants"
@@ -104,4 +106,35 @@ func NewTCPConnReadCloser(conn *net.TCPConn) io.ReadCloser {
 
 func NewTCPConnWriteCloser(conn *net.TCPConn) io.WriteCloser {
 	return &tcpConnWriteCloser{Conn: conn}
+}
+
+func WriteVarLength(writer io.Writer, b []byte) error {
+	length := len(b)
+	if length > constants.MaxMessagesize-2 {
+		return fmt.Errorf("message too long: %d", length)
+	}
+	buf := make([]byte, 2+length)
+	binary.LittleEndian.PutUint16(buf, uint16(length))
+	copy(buf[2:], b)
+	_, err := writer.Write(buf)
+	return err
+}
+
+func ReadVarLength(reader io.Reader, buf []byte) ([]byte, error) {
+	if cap(buf) < 2 {
+		buf = make([]byte, 2)
+	}
+	_, err := io.ReadFull(reader, buf[:2])
+	if err != nil {
+		return nil, err
+	}
+	length := int(binary.LittleEndian.Uint16(buf[:2]))
+	if cap(buf) < length {
+		buf = make([]byte, length)
+	}
+	_, err = io.ReadFull(reader, buf[:length])
+	if err != nil {
+		return nil, err
+	}
+	return buf[:length], nil
 }

@@ -108,7 +108,7 @@ func handleGeneric(layer *pel.PktEncLayer) {
 
 func handleGetFile(layer *pel.PktEncLayer) {
 	buffer := make([]byte, constants.MaxMessagesize)
-	filenamebuf, err := layer.ReadVarLength(buffer)
+	filenamebuf, err := utils.ReadVarLength(layer, buffer)
 	if err != nil {
 		return
 	}
@@ -124,12 +124,12 @@ func handleGetFile(layer *pel.PktEncLayer) {
 
 func handlePutFile(layer *pel.PktEncLayer) {
 	buffer := make([]byte, constants.MaxMessagesize)
-	destbuf, err := layer.ReadVarLength(buffer)
+	destbuf, err := utils.ReadVarLength(layer, buffer)
 	if err != nil {
 		return
 	}
 	destination := filepath.FromSlash(string(destbuf))
-	basenamebuf, err := layer.ReadVarLength(buffer)
+	basenamebuf, err := utils.ReadVarLength(layer, buffer)
 	if err != nil {
 		return
 	}
@@ -157,7 +157,7 @@ func handlePutFile(layer *pel.PktEncLayer) {
 func handleRunShell(layer *pel.PktEncLayer) {
 	buffer1 := make([]byte, constants.MaxMessagesize)
 	buffer2 := make([]byte, constants.MaxMessagesize)
-	termbuf, err := layer.ReadVarLength(buffer1)
+	termbuf, err := utils.ReadVarLength(layer, buffer1)
 	if err != nil {
 		return
 	}
@@ -171,7 +171,7 @@ func handleRunShell(layer *pel.PktEncLayer) {
 	ws_row := int(termsize[0])<<8 + int(termsize[1])
 	ws_col := int(termsize[2])<<8 + int(termsize[3])
 
-	cmdbuf, err := layer.ReadVarLength(buffer1)
+	cmdbuf, err := utils.ReadVarLength(layer, buffer1)
 	if err != nil {
 		return
 	}
@@ -187,7 +187,7 @@ func handleRunShell(layer *pel.PktEncLayer) {
 
 func handleRunShellNoTTY(layer *pel.PktEncLayer) {
 	buffer1 := make([]byte, constants.MaxMessagesize)
-	cmdbuf, err := layer.ReadVarLength(buffer1)
+	cmdbuf, err := utils.ReadVarLength(layer, buffer1)
 	if err != nil {
 		return
 	}
@@ -243,7 +243,7 @@ func handleSocks5(layer *pel.PktEncLayer) {
 }
 
 func handlePipe(layer *pel.PktEncLayer) {
-	addrbuf, err := layer.ReadVarLength(nil)
+	addrbuf, err := utils.ReadVarLength(layer, nil)
 	if err != nil {
 		return
 	}

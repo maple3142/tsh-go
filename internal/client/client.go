@@ -146,7 +146,7 @@ func handleGetFile(waitForConnection func() *pel.PktEncLayer, arg GetFileArgs) {
 		writer = io.MultiWriter(f, bar)
 	}
 
-	err := layer.WriteVarLength([]byte(arg.Src))
+	err := utils.WriteVarLength(layer, []byte(arg.Src))
 	if err != nil {
 		log.Println(err)
 		return
@@ -189,12 +189,12 @@ func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
 		basename = filepath.Base(arg.Src)
 	}
 
-	err := layer.WriteVarLength([]byte(arg.Dst))
+	err := utils.WriteVarLength(layer, []byte(arg.Dst))
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	err = layer.WriteVarLength([]byte(basename))
+	err = utils.WriteVarLength(layer, []byte(basename))
 	if err != nil {
 		log.Println(err)
 		return
@@ -241,7 +241,7 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs)
 	if term == "" {
 		term = "vt100"
 	}
-	err = layer.WriteVarLength([]byte(term))
+	err = utils.WriteVarLength(layer, []byte(term))
 	if err != nil {
 		return
 	}
@@ -257,7 +257,7 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs)
 		return
 	}
 
-	err = layer.WriteVarLength([]byte(arg.Command))
+	err = utils.WriteVarLength(layer, []byte(arg.Command))
 	if err != nil {
 		return
 	}
@@ -267,7 +267,7 @@ func handleRunShellNoTTY(waitForConnection func() *pel.PktEncLayer, arg RunShell
 	layer := waitForConnection()
 	defer layer.Close()
 
-	err := layer.WriteVarLength([]byte(arg.Command))
+	err := utils.WriteVarLength(layer, []byte(arg.Command))
 	if err != nil {
 		return
 	}
@@ -302,6 +302,6 @@ func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 
 func handlePipe(waitForConnection func() *pel.PktEncLayer, arg PipeArgs) {
 	layer := waitForConnection()
-	layer.WriteVarLength([]byte(arg.TargetAddr))
+	utils.WriteVarLength(layer, []byte(arg.TargetAddr))
 	utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
 }

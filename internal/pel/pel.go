@@ -403,37 +403,6 @@ func (layer *PktEncLayer) readConnUntilFilledTimeout(p []byte, timeout time.Dura
 	return nil
 }
 
-func (layer *PktEncLayer) WriteVarLength(b []byte) error {
-	length := len(b)
-	if length > constants.MaxMessagesize-2 {
-		return NewPelError(constants.PelBadMsgLength)
-	}
-	buf := make([]byte, 2+length)
-	binary.LittleEndian.PutUint16(buf, uint16(length))
-	copy(buf[2:], b)
-	_, err := layer.Write(buf)
-	return err
-}
-
-func (layer *PktEncLayer) ReadVarLength(buf []byte) ([]byte, error) {
-	if cap(buf) < 2 {
-		buf = make([]byte, 2)
-	}
-	_, err := io.ReadFull(layer, buf[:2])
-	if err != nil {
-		return nil, err
-	}
-	length := int(binary.LittleEndian.Uint16(buf[:2]))
-	if cap(buf) < length {
-		buf = make([]byte, length)
-	}
-	_, err = io.ReadFull(layer, buf[:length])
-	if err != nil {
-		return nil, err
-	}
-	return buf[:length], nil
-}
-
 type LayerReadCloser struct {
 	layer *PktEncLayer
 }
