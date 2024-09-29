@@ -261,8 +261,7 @@ func handleRunShell(waitForConnection func() utils.DuplexStreamEx, arg RunShellA
 	if err != nil {
 		return
 	}
-	// utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
-	utils.DuplexPipe(os.Stdin, os.Stdout, utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), nil, nil)
+	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), layer, nil, nil)
 }
 func handleRunShellNoTTY(waitForConnection func() utils.DuplexStreamEx, arg RunShellArgs) {
 	layer := waitForConnection()
@@ -272,8 +271,7 @@ func handleRunShellNoTTY(waitForConnection func() utils.DuplexStreamEx, arg RunS
 	if err != nil {
 		return
 	}
-	// utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
-	utils.DuplexPipe(os.Stdin, os.Stdout, utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), nil, nil)
+	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), layer, nil, nil)
 }
 func handleSocks5(waitForConnection func() utils.DuplexStreamEx, arg Socks5Args) {
 	addr, err := net.ResolveTCPAddr("tcp", arg.Socks5Addr)
@@ -296,8 +294,7 @@ func handleSocks5(waitForConnection func() utils.DuplexStreamEx, arg Socks5Args)
 		go func() {
 			layer := waitForConnection()
 			log.Println("Connection established", conn.RemoteAddr())
-			// utils.DuplexPipe(conn, conn, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
-			utils.DuplexPipe(conn, conn, utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), nil, nil)
+			utils.DuplexPipe(conn, layer, nil, nil)
 			log.Println("Connection closed", conn.RemoteAddr())
 		}()
 	}
@@ -306,6 +303,5 @@ func handleSocks5(waitForConnection func() utils.DuplexStreamEx, arg Socks5Args)
 func handlePipe(waitForConnection func() utils.DuplexStreamEx, arg PipeArgs) {
 	layer := waitForConnection()
 	utils.WriteVarLength(layer, []byte(arg.TargetAddr))
-	// utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
-	utils.DuplexPipe(os.Stdin, os.Stdout, utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), nil, nil)
+	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), layer, nil, nil)
 }

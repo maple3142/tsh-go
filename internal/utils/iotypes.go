@@ -2,77 +2,37 @@ package utils
 
 import (
 	"io"
-	"net"
 )
 
+// note: net.TCPConn and pel.PktEncLayer implements DuplexStreamEx
 type DuplexStreamEx interface {
 	io.Reader
 	io.Writer
 	io.Closer
-	CloseRead() error
 	CloseWrite() error
 }
 
-type DuplexStreamExReadCloser struct {
-	s DuplexStreamEx
+type dseWrapper struct {
+	r io.Reader
+	w io.WriteCloser
 }
 
-func (r *DuplexStreamExReadCloser) Read(p []byte) (n int, err error) {
-	return r.s.Read(p)
+func (d *dseWrapper) Read(p []byte) (n int, err error) {
+	return d.r.Read(p)
 }
 
-func (r *DuplexStreamExReadCloser) Close() error {
-	return r.s.CloseRead()
+func (d *dseWrapper) Write(p []byte) (n int, err error) {
+	return d.w.Write(p)
 }
 
-func DSE2ReadCloser(stream DuplexStreamEx) io.ReadCloser {
-	return &DuplexStreamExReadCloser{s: stream}
+func (d *dseWrapper) Close() error {
+	return d.w.Close()
 }
 
-type DuplexStreamExWriteCloser struct {
-	s DuplexStreamEx
+func (d *dseWrapper) CloseWrite() error {
+	return d.w.Close()
 }
 
-func (w *DuplexStreamExWriteCloser) Write(p []byte) (n int, err error) {
-	return w.s.Write(p)
-}
-
-func (w *DuplexStreamExWriteCloser) Close() error {
-	return w.s.CloseWrite()
-}
-
-func DSE2WriteCloser(stream DuplexStreamEx) io.WriteCloser {
-	return &DuplexStreamExWriteCloser{s: stream}
-}
-
-type tcpConnReadCloser struct {
-	conn *net.TCPConn
-}
-
-func (t *tcpConnReadCloser) Read(p []byte) (n int, err error) {
-	return t.conn.Read(p)
-}
-
-func (t *tcpConnReadCloser) Close() error {
-	return t.conn.CloseRead()
-}
-
-type tcpConnWriteCloser struct {
-	Conn *net.TCPConn
-}
-
-func (t *tcpConnWriteCloser) Write(p []byte) (n int, err error) {
-	return t.Conn.Write(p)
-}
-
-func (t *tcpConnWriteCloser) Close() error {
-	return t.Conn.CloseWrite()
-}
-
-func NewTCPConnReadCloser(conn *net.TCPConn) io.ReadCloser {
-	return &tcpConnReadCloser{conn: conn}
-}
-
-func NewTCPConnWriteCloser(conn *net.TCPConn) io.WriteCloser {
-	return &tcpConnWriteCloser{Conn: conn}
+func DSEFromRW(r io.Reader, w io.WriteCloser) DuplexStreamEx {
+	return &dseWrapper{r: r, w: w}
 }

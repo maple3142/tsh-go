@@ -182,8 +182,7 @@ func handleRunShell(layer utils.DuplexStreamEx) {
 		return
 	}
 	defer tp.Close()
-	// utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), tp.StdOut(), tp.StdIn(), buffer1, buffer2)
-	utils.DuplexPipe(utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), tp.StdOut(), tp.StdIn(), buffer1, buffer2)
+	utils.DuplexPipe(layer, utils.DSEFromRW(tp.StdOut(), tp.StdIn()), buffer1, buffer2)
 }
 
 func handleRunShellNoTTY(layer utils.DuplexStreamEx) {
@@ -212,8 +211,7 @@ func handleRunShellNoTTY(layer utils.DuplexStreamEx) {
 	}
 	combinedOutput := io.MultiReader(stdout, stderr)
 	go cmd.Run()
-	// utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), combinedOutput, stdin, buffer1, nil)
-	utils.DuplexPipe(utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), combinedOutput, stdin, buffer1, nil)
+	utils.DuplexPipe(layer, utils.DSEFromRW(combinedOutput, stdin), nil, nil)
 }
 
 func handleSocks5(layer utils.DuplexStreamEx) {
@@ -237,9 +235,7 @@ func handleSocks5(layer utils.DuplexStreamEx) {
 			return
 		}
 		log.Println("Connection established", conn.RemoteAddr())
-		// utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), conn, conn, nil, nil)
-		utils.DuplexPipe(utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), conn, conn, nil, nil)
-		// TODO: make it work with half open connection (like pipe below)
+		utils.DuplexPipe(layer, conn, nil, nil)
 		log.Println("Connection closed", conn.RemoteAddr())
 		return
 	}
@@ -264,7 +260,5 @@ func handlePipe(layer utils.DuplexStreamEx) {
 		conn.Close()
 		log.Println("Disconnected", addr)
 	}()
-	// utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), conn, conn, nil, nil)
-	// utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), utils.NewTCPConnReadCloser(conn), utils.NewTCPConnWriteCloser(conn), nil, nil)
-	utils.DuplexPipe(utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), utils.NewTCPConnReadCloser(conn), utils.NewTCPConnWriteCloser(conn), nil, nil)
+	utils.DuplexPipe(layer, conn, nil, nil)
 }

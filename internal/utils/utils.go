@@ -44,12 +44,12 @@ func CopyBuffer(dst io.Writer, src io.Reader, buf []byte) (written int64, err er
 	return written, err
 }
 
-func StreamPipe(src io.Reader, dst io.WriteCloser, buf []byte) (int64, error) {
+func StreamPipe(src io.Reader, dst io.Writer, buf []byte) (int64, error) {
 	/// just CopyBuffer, but left to right
 	return CopyBuffer(dst, src, buf)
 }
 
-func DuplexPipe(localReader io.Reader, localWriter io.WriteCloser, remoteReader io.Reader, remoteWriter io.WriteCloser, bufLocal2Remote []byte, bufRemote2Local []byte) {
+func DuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local []byte) {
 	// local refers to the connection that related to the client
 	// remote refers to the target that the client wants to connect to
 	if bufLocal2Remote == nil {
@@ -61,16 +61,15 @@ func DuplexPipe(localReader io.Reader, localWriter io.WriteCloser, remoteReader 
 
 	ch := make(chan struct{})
 	go func() {
-		StreamPipe(remoteReader, localWriter, bufRemote2Local)
+		StreamPipe(remote, local, bufRemote2Local)
 		// log.Println("remoteReader closed", time.Now())
-		localWriter.Close()
+		local.CloseWrite()
 		ch <- struct{}{}
 	}()
 	go func() {
-		StreamPipe(localReader, remoteWriter, bufLocal2Remote)
+		StreamPipe(local, remote, bufLocal2Remote)
 		// log.Println("localReader closed", time.Now())
-		// same as `nc -w ? ...` behavior
-		remoteWriter.Close()
+		remote.CloseWrite()
 	}()
 	<-ch
 }
