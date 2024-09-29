@@ -72,6 +72,8 @@ func DuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local [
 		remote.CloseWrite()
 	}()
 	<-ch
+	local.Close()
+	remote.Close()
 }
 
 func WriteVarLength(writer io.Writer, b []byte) error {
