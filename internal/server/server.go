@@ -78,7 +78,7 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 // entry handler,
 // automatically close connection after handling
 // it's safe to run with goroutine
-func handleGeneric(layer *pel.PktEncLayer) {
+func handleGeneric(layer utils.DuplexStreamEx) {
 	defer layer.Close()
 	defer func() {
 		recover()
@@ -106,7 +106,7 @@ func handleGeneric(layer *pel.PktEncLayer) {
 	}
 }
 
-func handleGetFile(layer *pel.PktEncLayer) {
+func handleGetFile(layer utils.DuplexStreamEx) {
 	buffer := make([]byte, constants.MaxMessagesize)
 	filenamebuf, err := utils.ReadVarLength(layer, buffer)
 	if err != nil {
@@ -122,7 +122,7 @@ func handleGetFile(layer *pel.PktEncLayer) {
 	layer.Close()
 }
 
-func handlePutFile(layer *pel.PktEncLayer) {
+func handlePutFile(layer utils.DuplexStreamEx) {
 	buffer := make([]byte, constants.MaxMessagesize)
 	destbuf, err := utils.ReadVarLength(layer, buffer)
 	if err != nil {
@@ -154,7 +154,7 @@ func handlePutFile(layer *pel.PktEncLayer) {
 	layer.Close()
 }
 
-func handleRunShell(layer *pel.PktEncLayer) {
+func handleRunShell(layer utils.DuplexStreamEx) {
 	buffer1 := make([]byte, constants.MaxMessagesize)
 	buffer2 := make([]byte, constants.MaxMessagesize)
 	termbuf, err := utils.ReadVarLength(layer, buffer1)
@@ -182,10 +182,11 @@ func handleRunShell(layer *pel.PktEncLayer) {
 		return
 	}
 	defer tp.Close()
-	utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), tp.StdOut(), tp.StdIn(), buffer1, buffer2)
+	// utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), tp.StdOut(), tp.StdIn(), buffer1, buffer2)
+	utils.DuplexPipe(utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), tp.StdOut(), tp.StdIn(), buffer1, buffer2)
 }
 
-func handleRunShellNoTTY(layer *pel.PktEncLayer) {
+func handleRunShellNoTTY(layer utils.DuplexStreamEx) {
 	buffer1 := make([]byte, constants.MaxMessagesize)
 	cmdbuf, err := utils.ReadVarLength(layer, buffer1)
 	if err != nil {
@@ -211,10 +212,11 @@ func handleRunShellNoTTY(layer *pel.PktEncLayer) {
 	}
 	combinedOutput := io.MultiReader(stdout, stderr)
 	go cmd.Run()
-	utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), combinedOutput, stdin, buffer1, nil)
+	// utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), combinedOutput, stdin, buffer1, nil)
+	utils.DuplexPipe(utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), combinedOutput, stdin, buffer1, nil)
 }
 
-func handleSocks5(layer *pel.PktEncLayer) {
+func handleSocks5(layer utils.DuplexStreamEx) {
 	srv, _ := socks5.NewClassicServer("", "")
 	srv.SupportedCommands = []byte{socks5.CmdConnect} // TODO: CmdUDP
 	if err := srv.Negotiate(layer); err != nil {
@@ -235,14 +237,15 @@ func handleSocks5(layer *pel.PktEncLayer) {
 			return
 		}
 		log.Println("Connection established", conn.RemoteAddr())
-		utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), conn, conn, nil, nil)
+		// utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), conn, conn, nil, nil)
+		utils.DuplexPipe(utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), conn, conn, nil, nil)
 		// TODO: make it work with half open connection (like pipe below)
 		log.Println("Connection closed", conn.RemoteAddr())
 		return
 	}
 }
 
-func handlePipe(layer *pel.PktEncLayer) {
+func handlePipe(layer utils.DuplexStreamEx) {
 	addrbuf, err := utils.ReadVarLength(layer, nil)
 	if err != nil {
 		return
@@ -262,6 +265,6 @@ func handlePipe(layer *pel.PktEncLayer) {
 		log.Println("Disconnected", addr)
 	}()
 	// utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), conn, conn, nil, nil)
-	utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), utils.NewTCPConnReadCloser(conn), utils.NewTCPConnWriteCloser(conn), nil, nil)
-
+	// utils.DuplexPipe(layer.ReadCloser(), layer.WriteCloser(), utils.NewTCPConnReadCloser(conn), utils.NewTCPConnWriteCloser(conn), nil, nil)
+	utils.DuplexPipe(utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), utils.NewTCPConnReadCloser(conn), utils.NewTCPConnWriteCloser(conn), nil, nil)
 }

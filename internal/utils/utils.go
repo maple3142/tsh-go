@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"tsh-go/internal/constants"
 )
 
@@ -74,38 +73,6 @@ func DuplexPipe(localReader io.Reader, localWriter io.WriteCloser, remoteReader 
 		remoteWriter.Close()
 	}()
 	<-ch
-}
-
-type tcpConnReadCloser struct {
-	conn *net.TCPConn
-}
-
-func (t *tcpConnReadCloser) Read(p []byte) (n int, err error) {
-	return t.conn.Read(p)
-}
-
-func (t *tcpConnReadCloser) Close() error {
-	return t.conn.CloseRead()
-}
-
-type tcpConnWriteCloser struct {
-	Conn *net.TCPConn
-}
-
-func (t *tcpConnWriteCloser) Write(p []byte) (n int, err error) {
-	return t.Conn.Write(p)
-}
-
-func (t *tcpConnWriteCloser) Close() error {
-	return t.Conn.CloseWrite()
-}
-
-func NewTCPConnReadCloser(conn *net.TCPConn) io.ReadCloser {
-	return &tcpConnReadCloser{conn: conn}
-}
-
-func NewTCPConnWriteCloser(conn *net.TCPConn) io.WriteCloser {
-	return &tcpConnWriteCloser{Conn: conn}
 }
 
 func WriteVarLength(writer io.Writer, b []byte) error {
