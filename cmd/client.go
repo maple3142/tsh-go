@@ -41,8 +41,8 @@ var clientCmd = &cobra.Command{
 		}
 		return nil
 	},
-	Short: "Tiny SHell client",
-	Long:  `Tiny SHell client connects to remote server or accept incoming connection, and does the specified action.`,
+	Short: "TSH client",
+	Long:  `TSH client connects to remote server or accept incoming connection, and does the specified action.`,
 	Example: `  tsh client -c 172.16.123.45
   tsh client -c cb -p 1337
   tsh client -c 127.0.0.1 -s hello 'ls -la /'`,

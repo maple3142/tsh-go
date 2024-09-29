@@ -25,8 +25,8 @@ var serverCmd = &cobra.Command{
 	Use:     "server [-s secret] [-c connect] [-p port] [-d]",
 	Aliases: []string{"s"},
 	Args:    cobra.NoArgs,
-	Short:   "Tiny SHell server",
-	Long:    `Tiny SHell server listens for incoming connections or connect back to client, and does the specified action.`,
+	Short:   "TSH server",
+	Long:    `TSH server listens for incoming connections or connect back to client, and does the specified action.`,
 	Example: `  tsh server
   tsh server -s hello -p 1337
   tsh server -c 192.168.87.63 --delay 3 -d`,
