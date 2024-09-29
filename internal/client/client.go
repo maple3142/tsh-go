@@ -59,32 +59,32 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 					os.Exit(1)
 				}
 				log.Print("Waiting for the server to connect...")
-				layer, err := connectBackListener.Accept()
+				stream, err := connectBackListener.Accept()
 				connectBackListener.Close()
 				if err != nil {
 					log.Printf("Accept failed: %v\n", err)
 					continue
 				}
 				log.Println("connected.")
-				layer.Write([]byte{mode})
-				return layer
+				stream.Write([]byte{mode})
+				return stream
 			}
 		} else {
 			addr := fmt.Sprintf("%s:%d", host, port)
-			layer, err := pel.Dial(addr, secret, true)
+			stream, err := pel.Dial(addr, secret, true)
 			if err != nil {
 				log.Println(err)
 				os.Exit(1)
 			}
-			layer.Write([]byte{mode})
-			return layer
+			stream.Write([]byte{mode})
+			return stream
 		}
 	}
 
 	switch mode {
 	case constants.Kill:
-		layer := waitForConnection()
-		layer.Close()
+		stream := waitForConnection()
+		stream.Close()
 		log.Println("Server killed")
 	case constants.RunShell:
 		handleRunShell(waitForConnection, arg.(RunShellArgs))
@@ -102,8 +102,8 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 }
 
 func handleGetFile(waitForConnection func() utils.DuplexStreamEx, arg GetFileArgs) {
-	layer := waitForConnection()
-	defer layer.Close()
+	stream := waitForConnection()
+	defer stream.Close()
 	buffer := make([]byte, constants.MaxMessagesize)
 
 	basename := strings.ReplaceAll(arg.Src, "\\", "/")
@@ -146,12 +146,12 @@ func handleGetFile(waitForConnection func() utils.DuplexStreamEx, arg GetFileArg
 		writer = io.MultiWriter(f, bar)
 	}
 
-	err := utils.WriteVarLength(layer, []byte(arg.Src))
+	err := utils.WriteVarLength(stream, []byte(arg.Src))
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	_, err = utils.CopyBuffer(writer, layer, buffer)
+	_, err = utils.CopyBuffer(writer, stream, buffer)
 	if err != nil {
 		log.Println(err)
 		os.Exit(1)
@@ -159,8 +159,8 @@ func handleGetFile(waitForConnection func() utils.DuplexStreamEx, arg GetFileArg
 }
 
 func handlePutFile(waitForConnection func() utils.DuplexStreamEx, arg PutFileArgs) {
-	layer := waitForConnection()
-	defer layer.Close()
+	stream := waitForConnection()
+	defer stream.Close()
 
 	var reader io.Reader
 	var fsize int64
@@ -189,12 +189,12 @@ func handlePutFile(waitForConnection func() utils.DuplexStreamEx, arg PutFileArg
 		basename = filepath.Base(arg.Src)
 	}
 
-	err := utils.WriteVarLength(layer, []byte(arg.Dst))
+	err := utils.WriteVarLength(stream, []byte(arg.Dst))
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	err = utils.WriteVarLength(layer, []byte(basename))
+	err = utils.WriteVarLength(stream, []byte(basename))
 	if err != nil {
 		log.Println(err)
 		return
@@ -208,12 +208,12 @@ func handlePutFile(waitForConnection func() utils.DuplexStreamEx, arg PutFileArg
 		progressbar.OptionSetDescription("Uploading"),
 		progressbar.OptionSetWriter(os.Stderr),
 	)
-	var writer io.Writer = layer
+	var writer io.Writer = stream
 	if reader != os.Stdin || (reader == os.Stdin && !terminal.IsTerminal(int(os.Stdin.Fd()))) {
 		// show progress bar if:
 		//   - src is not stdin
 		//   - src is stdin but stdin is not a tty
-		writer = io.MultiWriter(layer, bar)
+		writer = io.MultiWriter(stream, bar)
 	}
 
 	_, err = utils.CopyBuffer(writer, reader, make([]byte, constants.MaxMessagesize))
@@ -224,8 +224,8 @@ func handlePutFile(waitForConnection func() utils.DuplexStreamEx, arg PutFileArg
 }
 
 func handleRunShell(waitForConnection func() utils.DuplexStreamEx, arg RunShellArgs) {
-	layer := waitForConnection()
-	defer layer.Close()
+	stream := waitForConnection()
+	defer stream.Close()
 	oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		log.Println(err)
@@ -241,7 +241,7 @@ func handleRunShell(waitForConnection func() utils.DuplexStreamEx, arg RunShellA
 	if term == "" {
 		term = "vt100"
 	}
-	err = utils.WriteVarLength(layer, []byte(term))
+	err = utils.WriteVarLength(stream, []byte(term))
 	if err != nil {
 		return
 	}
@@ -252,26 +252,26 @@ func handleRunShell(waitForConnection func() utils.DuplexStreamEx, arg RunShellA
 	ws[1] = byte((ws_row) & 0xFF)
 	ws[2] = byte((ws_col >> 8) & 0xFF)
 	ws[3] = byte((ws_col) & 0xFF)
-	_, err = layer.Write(ws)
+	_, err = stream.Write(ws)
 	if err != nil {
 		return
 	}
 
-	err = utils.WriteVarLength(layer, []byte(arg.Command))
+	err = utils.WriteVarLength(stream, []byte(arg.Command))
 	if err != nil {
 		return
 	}
-	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), layer, nil, nil)
+	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
 }
 func handleRunShellNoTTY(waitForConnection func() utils.DuplexStreamEx, arg RunShellArgs) {
-	layer := waitForConnection()
-	defer layer.Close()
+	stream := waitForConnection()
+	defer stream.Close()
 
-	err := utils.WriteVarLength(layer, []byte(arg.Command))
+	err := utils.WriteVarLength(stream, []byte(arg.Command))
 	if err != nil {
 		return
 	}
-	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), layer, nil, nil)
+	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
 }
 func handleSocks5(waitForConnection func() utils.DuplexStreamEx, arg Socks5Args) {
 	addr, err := net.ResolveTCPAddr("tcp", arg.Socks5Addr)
@@ -292,16 +292,16 @@ func handleSocks5(waitForConnection func() utils.DuplexStreamEx, arg Socks5Args)
 			continue
 		}
 		go func() {
-			layer := waitForConnection()
+			stream := waitForConnection()
 			log.Println("Connection established", conn.RemoteAddr())
-			utils.DuplexPipe(conn, layer, nil, nil)
+			utils.DuplexPipe(conn, stream, nil, nil)
 			log.Println("Connection closed", conn.RemoteAddr())
 		}()
 	}
 }
 
 func handlePipe(waitForConnection func() utils.DuplexStreamEx, arg PipeArgs) {
-	layer := waitForConnection()
-	utils.WriteVarLength(layer, []byte(arg.TargetAddr))
-	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), layer, nil, nil)
+	stream := waitForConnection()
+	utils.WriteVarLength(stream, []byte(arg.TargetAddr))
+	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
 }
