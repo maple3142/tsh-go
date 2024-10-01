@@ -402,35 +402,3 @@ func (layer *PktEncLayer) readConnUntilFilledTimeout(p []byte, timeout time.Dura
 	}
 	return nil
 }
-
-// type LayerReadCloser struct {
-// 	layer *PktEncLayer
-// }
-
-// func (lrc *LayerReadCloser) Read(p []byte) (int, error) {
-// 	return lrc.layer.Read(p)
-// }
-
-// func (lrc *LayerReadCloser) Close() error {
-// 	return lrc.layer.CloseRead()
-// }
-
-// type LayerWriteCloser struct {
-// 	layer *PktEncLayer
-// }
-
-// func (lwc *LayerWriteCloser) Write(p []byte) (int, error) {
-// 	return lwc.layer.Write(p)
-// }
-
-// func (lwc *LayerWriteCloser) Close() error {
-// 	return lwc.layer.CloseWrite()
-// }
-
-// func (layer *PktEncLayer) ReadCloser() io.ReadCloser {
-// 	return &LayerReadCloser{layer: layer}
-// }
-
-// func (layer *PktEncLayer) WriteCloser() io.WriteCloser {
-// 	return &LayerWriteCloser{layer: layer}
-// }
