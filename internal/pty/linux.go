@@ -15,15 +15,15 @@ type LinuxPtyWrapper struct {
 	ptmx *os.File
 }
 
-func (pw LinuxPtyWrapper) StdIn() io.WriteCloser {
+func (pw *LinuxPtyWrapper) StdIn() io.WriteCloser {
 	return pw.ptmx
 }
 
-func (pw LinuxPtyWrapper) StdOut() io.ReadCloser {
+func (pw *LinuxPtyWrapper) StdOut() io.ReadCloser {
 	return pw.ptmx
 }
 
-func (pw LinuxPtyWrapper) Close() {
+func (pw *LinuxPtyWrapper) Close() {
 	pw.ptmx.Close()
 }
 
@@ -39,5 +39,5 @@ func OpenPty(command, term string, ws_col, ws_row uint32) (PtyWrapper, error) {
 	if err != nil {
 		return nil, err
 	}
-	return LinuxPtyWrapper{ptmx: ptmx}, nil
+	return &LinuxPtyWrapper{ptmx: ptmx}, nil
 }

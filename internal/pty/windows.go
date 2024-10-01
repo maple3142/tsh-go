@@ -27,15 +27,15 @@ type WinPtyWrapper struct {
 	wp *winpty.WinPTY
 }
 
-func (pw WinPtyWrapper) StdIn() io.WriteCloser {
+func (pw *WinPtyWrapper) StdIn() io.WriteCloser {
 	return pw.wp.StdIn
 }
 
-func (pw WinPtyWrapper) StdOut() io.ReadCloser {
+func (pw *WinPtyWrapper) StdOut() io.ReadCloser {
 	return pw.wp.StdOut
 }
 
-func (pw WinPtyWrapper) Close() {
+func (pw *WinPtyWrapper) Close() {
 	pw.wp.Close()
 }
 
@@ -167,5 +167,5 @@ func OpenPty(command, term string, ws_col, ws_row uint32) (PtyWrapper, error) {
 	if err != nil {
 		return nil, err
 	}
-	return WinPtyWrapper{wp: wp}, nil
+	return &WinPtyWrapper{wp: wp}, nil
 }
