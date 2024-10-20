@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"time"
 
@@ -144,96 +145,109 @@ func (layer *PktEncLayer) hmac(bs ...[]byte) []byte {
 var key1Tag = []byte{112, 101, 107, 111, 109, 105, 107, 111}
 var key2Tag = []byte{97, 107, 117, 115, 104, 105, 111, 0}
 
-// exchange IV with client and setup the encryption layer
+func multipleX25519(point []byte, scalars ...[]byte) ([]byte, error) {
+	var err error
+	pt := point
+	for _, scalar := range scalars {
+		pt, err = curve25519.X25519(scalar, pt)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return pt, nil
+}
+
+var curve25519q big.Int
+
+func init() {
+	curve25519q.SetString("1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed", 16)
+}
+
+func (layer *PktEncLayer) generateW() ([]byte, []byte) {
+	// w * wi = 1 mod q
+	var w big.Int
+	w.SetBytes(layer.secret)
+	w.Mod(&w, &curve25519q)
+	var wi big.Int
+	wi.ModInverse(&w, &curve25519q)
+	wb := w.FillBytes(make([]byte, curve25519.ScalarSize))
+	wib := wi.FillBytes(make([]byte, curve25519.ScalarSize))
+	return wb, wib
+}
+
+// do an SPAKE2-like key exchange (likely weaker but simpler to implement)
 // return err if the packet read/write operation
 // takes more than HandshakeRWTimeout (default: 3) seconds
 func (layer *PktEncLayer) Handshake(isInitiator bool) error {
+	wb, wib := layer.generateW()
+
 	timeout := time.Duration(constants.HandshakeRWTimeout) * time.Second
 	// generate key pair
 	my_sk := make([]byte, curve25519.ScalarSize)
 	rand.Read(my_sk)
-	my_pk, err := curve25519.X25519(my_sk, curve25519.Basepoint)
+	my_pk, err := multipleX25519(curve25519.Basepoint, my_sk, wb) // pk'=(sk*w)*G
 	if err != nil {
 		return NewHandshakeError(constants.PelFailure, "Failed to generate key pair")
 	}
-	pk_and_digest := append(my_pk, layer.hmac(my_pk)...)
-	if !isInitiator {
-		// receive public key
-		recvbuf := make([]byte, curve25519.PointSize+constants.Digestsize)
-		err = layer.readConnUntilFilledTimeout(recvbuf, timeout)
-		if err != nil {
-			return NewHandshakeError(constants.PelFailure, "Failed to receive public key and digest")
-		}
-		remote_pk := recvbuf[:curve25519.PointSize]
-		digest := recvbuf[curve25519.PointSize:]
-		if subtle.ConstantTimeCompare(digest, layer.hmac(remote_pk)) != 1 {
-			return NewHandshakeError(constants.PelFailure, "Public key digest verification failed (perhaps secret does not match?)")
-		}
 
-		// send public key and digest
-		layer.conn.SetWriteDeadline(
-			time.Now().Add(time.Duration(constants.HandshakeRWTimeout) * time.Second))
-		n, err := layer.conn.Write(pk_and_digest)
-		layer.conn.SetWriteDeadline(time.Time{})
-		if n != curve25519.ScalarSize+constants.Digestsize || err != nil {
-			return NewHandshakeError(constants.PelFailure, "Failed to send public key")
-		}
+	var remote_pk []byte = make([]byte, curve25519.PointSize)
+	var shared_secret []byte
 
-		// derive shared secret
-		shared_secret, err := curve25519.X25519(my_sk, remote_pk)
-		if err != nil {
-			return NewHandshakeError(constants.PelFailure, "Failed to derive shared secret")
-		}
-		key1 := layer.hmac(shared_secret, key1Tag)
-		key2 := layer.hmac(shared_secret, key2Tag)
-
-		var aead cipher.AEAD
-
-		aead, _ = chacha20poly1305.New(key2)
-		layer.sendAead = aead
-
-		aead, _ = chacha20poly1305.New(key1)
-		layer.recvAead = aead
-		return nil
-	} else {
-		// send public key and digest
-		layer.conn.SetWriteDeadline(
-			time.Now().Add(time.Duration(constants.HandshakeRWTimeout) * time.Second))
-		n, err := layer.conn.Write(pk_and_digest)
-		layer.conn.SetWriteDeadline(time.Time{})
-		if n != curve25519.ScalarSize+constants.Digestsize || err != nil {
-			return NewHandshakeError(constants.PelFailure, "Failed to send public key")
-		}
-
-		// receive public key
-		recvbuf := make([]byte, curve25519.PointSize+constants.Digestsize)
-		err = layer.readConnUntilFilledTimeout(recvbuf, timeout)
-		if err != nil {
-			return NewHandshakeError(constants.PelFailure, "Failed to receive public key and digest (perhaps secret does not match?)")
-		}
-		remote_pk := recvbuf[:curve25519.PointSize]
-		digest := recvbuf[curve25519.PointSize:]
-		if subtle.ConstantTimeCompare(digest, layer.hmac(remote_pk)) != 1 {
-			return NewHandshakeError(constants.PelFailure, "Public key digest verification failed")
-		}
-
-		// derive shared secret
-		shared_secret, err := curve25519.X25519(my_sk, remote_pk)
-		if err != nil {
-			return NewHandshakeError(constants.PelFailure, "Failed to derive shared secret")
-		}
-		key1 := layer.hmac(shared_secret, key1Tag)
-		key2 := layer.hmac(shared_secret, key2Tag)
-
-		var aead cipher.AEAD
-
-		aead, _ = chacha20poly1305.New(key1)
-		layer.sendAead = aead
-
-		aead, _ = chacha20poly1305.New(key2)
-		layer.recvAead = aead
-		return nil
+	// send public key
+	layer.conn.SetWriteDeadline(
+		time.Now().Add(time.Duration(constants.HandshakeRWTimeout) * time.Second))
+	n, err := layer.conn.Write(my_pk)
+	layer.conn.SetWriteDeadline(time.Time{})
+	if n != curve25519.ScalarSize || err != nil {
+		return NewHandshakeError(constants.PelFailure, "Failed to send public key")
 	}
+
+	// receive public key
+	err = layer.readConnUntilFilledTimeout(remote_pk, timeout)
+	if err != nil {
+		return NewHandshakeError(constants.PelFailure, "Failed to receive public key")
+	}
+
+	// derive shared secret
+	shared_secret, err = multipleX25519(remote_pk, my_sk, wib) // S=(sk*w^-1)*remote_pk'=(my_sk*remote_sk)*G
+	if err != nil {
+		return NewHandshakeError(constants.PelFailure, "Failed to derive shared secret")
+	}
+	key1 := layer.hmac(shared_secret, key1Tag)
+	key2 := layer.hmac(shared_secret, key2Tag)
+	var aead cipher.AEAD
+	if isInitiator {
+		aead, _ = chacha20poly1305.New(key1)
+		layer.sendAead = aead
+		aead, _ = chacha20poly1305.New(key2)
+		layer.recvAead = aead
+	} else {
+		aead, _ = chacha20poly1305.New(key2)
+		layer.sendAead = aead
+		aead, _ = chacha20poly1305.New(key1)
+		layer.recvAead = aead
+	}
+
+	// still need to confirm the shared secret is the same
+	var pk1, pk2 []byte
+	if isInitiator {
+		pk1 = my_pk
+		pk2 = remote_pk
+	} else {
+		pk1 = remote_pk
+		pk2 = my_pk
+	}
+	confirm_message := layer.hmac(pk1, pk2, shared_secret)
+	n, err = layer.Write(confirm_message)
+	if n != len(confirm_message) || err != nil {
+		return NewHandshakeError(constants.PelFailure, "Failed to send confirmation")
+	}
+	buf := make([]byte, len(confirm_message))
+	_, err = io.ReadFull(layer, buf)
+	if err != nil || subtle.ConstantTimeCompare(buf, confirm_message) != 1 {
+		return NewHandshakeError(constants.PelFailure, "Failed to receive confirmation message (secret does not match?)")
+	}
+	return nil
 }
 
 func (layer *PktEncLayer) Close() error {

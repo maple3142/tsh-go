@@ -10,7 +10,7 @@ import (
 	"tsh-go/internal/utils"
 )
 
-var testSecret = []byte("just some secret")
+var testSecret = []byte("just some secret lol xd and it is super long")
 
 const testAddress = "127.0.0.1:2333"
 

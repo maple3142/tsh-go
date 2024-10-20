@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -105,4 +106,9 @@ func ReadVarLength(reader io.Reader, buf []byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf[:length], nil
+}
+
+func KDF(secret []byte) []byte {
+	// assuming that secret is not a short input like a password
+	return sha256.New().Sum(secret)
 }

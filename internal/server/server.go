@@ -45,6 +45,9 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 			syscall.SIGQUIT)
 	}
 
+	// apply kdf
+	secret = utils.KDF(secret)
+
 	if host == "" {
 		addr := fmt.Sprintf(":%d", port)
 		ln, err := pel.Listen(addr, secret, false)

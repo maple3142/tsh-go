@@ -40,6 +40,9 @@ type PipeArgs struct {
 }
 
 func Run(secret []byte, host string, port int, mode uint8, arg any) {
+	// apply kdf
+	secret = utils.KDF(secret)
+
 	var isConnectBack bool
 
 	if host == "cb" {
