@@ -249,7 +249,13 @@ func handleRunShell(waitForConnection func() utils.DuplexStreamEx, arg RunShellA
 		return
 	}
 
-	ws_col, ws_row, _ := terminal.GetSize(int(os.Stdout.Fd()))
+	// if stdout is not a tty it is likely a pipe to a file
+	// so we make it max-sized for easier processing
+	// note that the remote "always" open a pty to run the command
+	ws_col, ws_row := 65535, 65535
+	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+		ws_col, ws_row, _ = terminal.GetSize(int(os.Stdout.Fd()))
+	}
 	ws := make([]byte, 4)
 	ws[0] = byte((ws_row >> 8) & 0xFF)
 	ws[1] = byte((ws_row) & 0xFF)
