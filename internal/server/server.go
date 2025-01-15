@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -200,7 +199,7 @@ func handleRunShellNoTTY(stream utils.DuplexStreamEx) {
 	}
 	command := string(cmdbuf)
 
-	cmd := exec.Command("/bin/sh", "-c", command)
+	cmd := runShellCommand(command)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		log.Println(err)

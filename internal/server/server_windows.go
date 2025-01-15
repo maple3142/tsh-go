@@ -3,7 +3,11 @@
 
 package server
 
-import "github.com/gonutz/ide/w32"
+import (
+	"os/exec"
+
+	"github.com/gonutz/ide/w32"
+)
 
 func init() {
 	// hide console window
@@ -14,4 +18,8 @@ func init() {
 			w32.ShowWindowAsync(console, w32.SW_HIDE)
 		}
 	}
+}
+
+func runShellCommand(command string) *exec.Cmd {
+	return exec.Command("cmd", "/c", command)
 }
