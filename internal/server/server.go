@@ -250,7 +250,9 @@ func handleRunShell(stream utils.DuplexStreamEx) {
 		return
 	}
 	defer tp.Close()
-	utils.DuplexPipe(stream, utils.DSEFromRW(tp.StdOut(), tp.StdIn()), buffer1, buffer2)
+	if err := utils.DuplexPipe(stream, utils.DSEFromRW(tp.StdOut(), tp.StdIn()), buffer1, buffer2); err != nil {
+		log.Println(err)
+	}
 }
 
 func handleRunShellNoTTY(stream utils.DuplexStreamEx) {
@@ -279,7 +281,9 @@ func handleRunShellNoTTY(stream utils.DuplexStreamEx) {
 	}
 	combinedOutput := io.MultiReader(stdout, stderr)
 	go cmd.Run()
-	utils.DuplexPipe(stream, utils.DSEFromRW(combinedOutput, stdin), nil, nil)
+	if err := utils.DuplexPipe(stream, utils.DSEFromRW(combinedOutput, stdin), nil, nil); err != nil {
+		log.Println(err)
+	}
 }
 
 func handleSocks5(stream utils.DuplexStreamEx) {
@@ -325,7 +329,9 @@ func handleSocks5Stream(stream utils.DuplexStreamEx) {
 			return
 		}
 		log.Println("Connection established", conn.RemoteAddr())
-		utils.DuplexPipe(stream, conn, nil, nil)
+		if err := utils.DuplexPipe(stream, conn, nil, nil); err != nil {
+			log.Println(err)
+		}
 		log.Println("Connection closed", conn.RemoteAddr())
 		return
 	}
@@ -355,5 +361,7 @@ func handlePipe(stream utils.DuplexStreamEx) {
 		conn.Close()
 		log.Println("Disconnected", addr)
 	}()
-	utils.DuplexPipe(stream, conn, nil, nil)
+	if err := utils.DuplexPipe(stream, conn, nil, nil); err != nil {
+		log.Println(err)
+	}
 }

@@ -6,10 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"os"
+	"syscall"
+	"time"
 	"tsh-go/internal/constants"
 )
 
 var errInvalidWrite = errors.New("invalid write result")
+
+const duplexPipeDrainTimeout = 10 * time.Millisecond
 
 func CopyBuffer(dst io.Writer, src io.Reader, buf []byte) (written int64, err error) {
 	// copied from https://cs.opensource.google/go/go/+/refs/tags/go1.23.0:src/io/io.go;l=407;drc=beea7c1ba6a93c2a2991e79936ac4050bae851c4
@@ -50,7 +56,30 @@ func StreamPipe(src io.Reader, dst io.Writer, buf []byte) (int64, error) {
 	return CopyBuffer(dst, src, buf)
 }
 
-func DuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local []byte) {
+type duplexPipeResult struct {
+	direction duplexPipeDirection
+	err       error
+}
+
+type duplexPipeDirection uint8
+
+const (
+	duplexPipeRemoteToLocal duplexPipeDirection = iota
+	duplexPipeLocalToRemote
+)
+
+func (d duplexPipeDirection) String() string {
+	switch d {
+	case duplexPipeRemoteToLocal:
+		return "remote_to_local"
+	case duplexPipeLocalToRemote:
+		return "local_to_remote"
+	default:
+		return fmt.Sprintf("unknown_direction(%d)", uint8(d))
+	}
+}
+
+func DuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local []byte) error {
 	// local refers to the connection that related to the client
 	// remote refers to the target that the client wants to connect to
 	if bufLocal2Remote == nil {
@@ -60,21 +89,67 @@ func DuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local [
 		bufRemote2Local = make([]byte, constants.MaxMessagesize)
 	}
 
-	ch := make(chan struct{})
+	// start 2 goroutines to copy in both directions and collect their results
+	results := make(chan duplexPipeResult, 2)
 	go func() {
-		StreamPipe(remote, local, bufRemote2Local)
-		// log.Println("remoteReader closed", time.Now())
-		local.CloseWrite()
-		ch <- struct{}{}
+		_, copyErr := StreamPipe(remote, local, bufRemote2Local)
+		closeErr := local.CloseWrite()
+		results <- duplexPipeResult{
+			direction: duplexPipeRemoteToLocal,
+			err:       errors.Join(copyErr, closeErr),
+		}
 	}()
 	go func() {
-		StreamPipe(local, remote, bufLocal2Remote)
-		// log.Println("localReader closed", time.Now())
-		remote.CloseWrite()
+		_, copyErr := StreamPipe(local, remote, bufLocal2Remote)
+		closeErr := remote.CloseWrite()
+		results <- duplexPipeResult{
+			direction: duplexPipeLocalToRemote,
+			err:       errors.Join(copyErr, closeErr),
+		}
 	}()
-	<-ch
+
+	// we want preserve the original interactive-shell behavior:
+	// once remote ends, the pipe is considered done even if the local input side is still open.
+	var errs []error
+	var localToRemoteDone bool
+	for {
+		result := <-results
+		if result.err != nil && !isExpectedCloseError(result.err) {
+			errs = append(errs, fmt.Errorf("%s: %w", result.direction, result.err))
+		}
+		if result.direction == duplexPipeRemoteToLocal {
+			break
+		}
+		localToRemoteDone = true
+	}
+
+	// closing both sides gives the opposite copy goroutine a chance to unblock
 	local.Close()
 	remote.Close()
+
+	if !localToRemoteDone {
+		// this fixes the case that user send Ctrl-D to signal EOF so remote closes, but local terminal might still open
+		// sicne terminal reads do not always unblock on close
+		// just wait briefly to collect real errors from ordinary streams or return after timeout
+
+		// actually, closing fd in one thread does not unblock the read in another thread
+		// this is a known linux issue
+		select {
+		case result := <-results:
+			if result.err != nil && !isExpectedCloseError(result.err) {
+				errs = append(errs, fmt.Errorf("%s: %w", result.direction, result.err))
+			}
+		case <-time.After(duplexPipeDrainTimeout):
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func isExpectedCloseError(err error) bool {
+	// this function is used to filter out the expected errors that can happen during normal shutdown of the pipe
+	// some streams report normal shutdown as close errors
+	// e.g. PTYs commonly return EIO when the slave side exits (e.g. user send Ctrl-D in shell)
+	return errors.Is(err, net.ErrClosed) || errors.Is(err, os.ErrClosed) || errors.Is(err, syscall.EIO)
 }
 
 func WriteVarLength(writer io.Writer, b []byte) error {

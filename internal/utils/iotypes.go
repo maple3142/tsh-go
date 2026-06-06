@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"io"
 )
 
@@ -26,7 +27,11 @@ func (d *dseWrapper) Write(p []byte) (n int, err error) {
 }
 
 func (d *dseWrapper) Close() error {
-	return d.w.Close()
+	err := d.w.Close()
+	if r, ok := d.r.(io.Closer); ok {
+		err = errors.Join(err, r.Close())
+	}
+	return err
 }
 
 func (d *dseWrapper) CloseWrite() error {
