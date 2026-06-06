@@ -130,25 +130,21 @@ func handleGetFile(waitForConnection func() (utils.DuplexStreamEx, error), arg G
 	basename := strings.ReplaceAll(arg.Src, "\\", "/")
 	basename = filepath.Base(filepath.FromSlash(basename))
 
+	if err := utils.WriteVarLength(stream, []byte(arg.Src)); err != nil {
+		return err
+	}
+	if err := protocol.ReadStatus(stream); err != nil {
+		return err
+	}
+
 	destination := arg.Dst
 	var writer io.Writer
-
-	bar := progressbar.NewOptions(-1,
-		progressbar.OptionSetWidth(20),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionShowBytes(true),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetDescription("Downloading"),
-		progressbar.OptionSpinnerType(22),
-		progressbar.OptionSetWriter(os.Stderr),
-	)
-
 	if arg.Dst == "-" {
 		// if dst is "-", write to stdout
 		writer = os.Stdout
 		if !terminal.IsTerminal(int(os.Stdout.Fd())) {
 			// progress bar for file transfer if stdout is not a tty
-			writer = io.MultiWriter(writer, bar)
+			writer = io.MultiWriter(writer, newTransferBar("Downloading", -1))
 		}
 	} else {
 		// if dst is a directory, save file to dst/basename
@@ -163,12 +159,7 @@ func handleGetFile(waitForConnection func() (utils.DuplexStreamEx, error), arg G
 		}
 		defer f.Close()
 
-		writer = io.MultiWriter(f, bar)
-	}
-
-	err = utils.WriteVarLength(stream, []byte(arg.Src))
-	if err != nil {
-		return err
+		writer = io.MultiWriter(f, newTransferBar("Downloading", -1))
 	}
 	_, err = utils.CopyBuffer(writer, stream, buffer)
 	if err != nil {
@@ -217,15 +208,11 @@ func handlePutFile(waitForConnection func() (utils.DuplexStreamEx, error), arg P
 	if err != nil {
 		return err
 	}
+	if err := protocol.ReadStatus(stream); err != nil {
+		return err
+	}
 
-	bar := progressbar.NewOptions(int(fsize),
-		progressbar.OptionSetWidth(20),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionShowBytes(true),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetDescription("Uploading"),
-		progressbar.OptionSetWriter(os.Stderr),
-	)
+	bar := newTransferBar("Uploading", int(fsize))
 	var writer io.Writer = stream
 	if reader != os.Stdin || (reader == os.Stdin && !terminal.IsTerminal(int(os.Stdin.Fd()))) {
 		// show progress bar if:
@@ -239,6 +226,17 @@ func handlePutFile(waitForConnection func() (utils.DuplexStreamEx, error), arg P
 		return err
 	}
 	return nil
+}
+
+func newTransferBar(description string, max int) *progressbar.ProgressBar {
+	return progressbar.NewOptions(max,
+		progressbar.OptionSetWidth(20),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionShowCount(),
+		progressbar.OptionSetDescription(description),
+		progressbar.OptionSetWriter(os.Stderr),
+	)
 }
 
 func handleRunShell(waitForConnection func() (utils.DuplexStreamEx, error), arg RunShellArgs) error {
@@ -386,6 +384,10 @@ func handlePipe(waitForConnection func() (utils.DuplexStreamEx, error), arg Pipe
 		return err
 	}
 	if err := utils.WriteVarLength(stream, []byte(arg.TargetAddr)); err != nil {
+		stream.Close()
+		return err
+	}
+	if err := protocol.ReadStatus(stream); err != nil {
 		stream.Close()
 		return err
 	}

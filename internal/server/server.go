@@ -166,9 +166,13 @@ func handleGetFile(stream utils.DuplexStreamEx) {
 	filename := string(filenamebuf)
 	f, err := os.Open(filename)
 	if err != nil {
+		protocol.WriteStatusError(stream, err)
 		return
 	}
 	defer f.Close()
+	if err := protocol.WriteStatusOK(stream); err != nil {
+		return
+	}
 	utils.CopyBuffer(stream, f, buffer)
 	stream.Close()
 }
@@ -198,9 +202,13 @@ func handlePutFile(stream utils.DuplexStreamEx) {
 
 	f, err := os.OpenFile(destination, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
+		protocol.WriteStatusError(stream, err)
 		return
 	}
 	defer f.Close()
+	if err := protocol.WriteStatusOK(stream); err != nil {
+		return
+	}
 	utils.CopyBuffer(f, stream, buffer)
 	stream.Close()
 }
@@ -323,10 +331,15 @@ func handlePipe(stream utils.DuplexStreamEx) {
 	log.Println("Connecting to", addr)
 	parsedAddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
+		protocol.WriteStatusError(stream, err)
 		return
 	}
 	conn, err := net.DialTCP("tcp", nil, parsedAddr)
 	if err != nil {
+		protocol.WriteStatusError(stream, err)
+		return
+	}
+	if err := protocol.WriteStatusOK(stream); err != nil {
 		return
 	}
 	defer func() {
