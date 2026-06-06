@@ -196,9 +196,9 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 	// send public key
 	layer.conn.SetWriteDeadline(
 		time.Now().Add(time.Duration(constants.HandshakeRWTimeout) * time.Second))
-	n, err := layer.conn.Write(my_pk)
+	_, err = layer.conn.Write(my_pk)
 	layer.conn.SetWriteDeadline(time.Time{})
-	if n != curve25519.ScalarSize || err != nil {
+	if err != nil {
 		return NewHandshakeError(constants.PelFailure, "Failed to send public key")
 	}
 
@@ -238,8 +238,8 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 		pk2 = my_pk
 	}
 	confirm_message := layer.hmac(pk1, pk2, shared_secret)
-	n, err = layer.Write(confirm_message)
-	if n != len(confirm_message) || err != nil {
+	_, err = layer.Write(confirm_message)
+	if err != nil {
 		return NewHandshakeError(constants.PelFailure, "Failed to send confirmation")
 	}
 	buf := make([]byte, len(confirm_message))
