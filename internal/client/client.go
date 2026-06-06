@@ -285,7 +285,7 @@ func handleRunShell(waitForConnection func() (utils.DuplexStreamEx, error), arg 
 	if err != nil {
 		return err
 	}
-	return utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
+	return utils.DuplexPipeUntilRemoteEOF(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
 }
 func handleRunShellNoTTY(waitForConnection func() (utils.DuplexStreamEx, error), arg RunShellArgs) error {
 	stream, err := waitForConnection()
@@ -298,7 +298,7 @@ func handleRunShellNoTTY(waitForConnection func() (utils.DuplexStreamEx, error),
 	if err != nil {
 		return err
 	}
-	return utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
+	return utils.DuplexPipeUntilRemoteEOF(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
 }
 func handleSocks5(waitForConnection func() (utils.DuplexStreamEx, error), arg Socks5Args) error {
 	addr, err := net.ResolveTCPAddr("tcp", arg.Socks5Addr)
@@ -370,7 +370,7 @@ func handleSocks5(waitForConnection func() (utils.DuplexStreamEx, error), arg So
 				return
 			}
 			log.Println("Connection established", conn.RemoteAddr())
-			if err := utils.DuplexPipe(conn, utils.DSEFromRW(stream, stream), nil, nil); err != nil {
+			if err := utils.DuplexPipeHalfClose(conn, utils.DSEFromRW(stream, stream), nil, nil); err != nil {
 				log.Println("Connection closed with error", conn.RemoteAddr(), err)
 				return
 			}
@@ -392,5 +392,5 @@ func handlePipe(waitForConnection func() (utils.DuplexStreamEx, error), arg Pipe
 		stream.Close()
 		return err
 	}
-	return utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
+	return utils.DuplexPipeHalfClose(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
 }

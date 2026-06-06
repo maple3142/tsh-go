@@ -70,13 +70,13 @@ func (s *closeReadTrackingStream) Close() error {
 	return nil
 }
 
-func TestDuplexPipeCopiesBothDirections(t *testing.T) {
+func TestDuplexPipeHalfCloseCopiesBothDirections(t *testing.T) {
 	var localOut bytes.Buffer
 	var remoteOut bytes.Buffer
 	local := DSEFromRW(strings.NewReader("local to remote"), bufferWriteCloser{&localOut})
 	remote := DSEFromRW(strings.NewReader("remote to local"), bufferWriteCloser{&remoteOut})
 
-	if err := DuplexPipe(local, remote, make([]byte, 4), make([]byte, 4)); err != nil {
+	if err := DuplexPipeHalfClose(local, remote, make([]byte, 4), make([]byte, 4)); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := localOut.String(), "remote to local"; got != want {
@@ -87,35 +87,35 @@ func TestDuplexPipeCopiesBothDirections(t *testing.T) {
 	}
 }
 
-func TestDuplexPipeReturnsCopyErrors(t *testing.T) {
+func TestDuplexPipeUntilRemoteEOFReturnsCopyErrors(t *testing.T) {
 	wantErr := errors.New("read failed")
 	local := DSEFromRW(strings.NewReader("local to remote"), bufferWriteCloser{&bytes.Buffer{}})
 	remote := DSEFromRW(errReader{err: wantErr}, bufferWriteCloser{&bytes.Buffer{}})
 
-	err := DuplexPipe(local, remote, make([]byte, 4), make([]byte, 4))
+	err := DuplexPipeUntilRemoteEOF(local, remote, make([]byte, 4), make([]byte, 4))
 	if !errors.Is(err, wantErr) {
-		t.Fatalf("DuplexPipe() error = %v, want %v", err, wantErr)
+		t.Fatalf("DuplexPipeUntilRemoteEOF() error = %v, want %v", err, wantErr)
 	}
 }
 
-func TestDuplexPipeReturnsWhenOppositeReaderDoesNotUnblock(t *testing.T) {
+func TestDuplexPipeUntilRemoteEOFReturnsWhenOppositeReaderDoesNotUnblock(t *testing.T) {
 	local := DSEFromRW(blockingReader{}, bufferWriteCloser{&bytes.Buffer{}})
 	remote := DSEFromRW(strings.NewReader("remote done"), bufferWriteCloser{&bytes.Buffer{}})
 
 	start := time.Now()
-	if err := DuplexPipe(local, remote, make([]byte, 4), make([]byte, 4)); err != nil {
+	if err := DuplexPipeUntilRemoteEOF(local, remote, make([]byte, 4), make([]byte, 4)); err != nil {
 		t.Fatal(err)
 	}
 	if elapsed := time.Since(start); elapsed > time.Second {
-		t.Fatalf("DuplexPipe took too long to return for blocking reader: %s", elapsed)
+		t.Fatalf("DuplexPipeUntilRemoteEOF took too long to return for blocking reader: %s", elapsed)
 	}
 }
 
-func TestDuplexPipeTreatsPtyEIOAsExpectedClose(t *testing.T) {
+func TestDuplexPipeUntilRemoteEOFTreatsPtyEIOAsExpectedClose(t *testing.T) {
 	local := DSEFromRW(strings.NewReader(""), bufferWriteCloser{&bytes.Buffer{}})
 	remote := DSEFromRW(errReader{err: &os.PathError{Op: "read", Path: "/dev/ptmx", Err: syscall.EIO}}, bufferWriteCloser{&bytes.Buffer{}})
 
-	if err := DuplexPipe(local, remote, make([]byte, 4), make([]byte, 4)); err != nil {
+	if err := DuplexPipeUntilRemoteEOF(local, remote, make([]byte, 4), make([]byte, 4)); err != nil {
 		t.Fatal(err)
 	}
 }

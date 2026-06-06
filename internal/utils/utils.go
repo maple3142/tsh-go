@@ -79,7 +79,9 @@ func (d duplexPipeDirection) String() string {
 	}
 }
 
-func DuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local []byte) error {
+func startDuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local []byte) <-chan duplexPipeResult {
+	// start a duplex pipe and return a channel that will receive the results of both directions
+
 	// local refers to the connection that related to the client
 	// remote refers to the target that the client wants to connect to
 	if bufLocal2Remote == nil {
@@ -89,7 +91,6 @@ func DuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local [
 		bufRemote2Local = make([]byte, constants.MaxMessagesize)
 	}
 
-	// start 2 goroutines to copy in both directions and collect their results
 	results := make(chan duplexPipeResult, 2)
 	go func() {
 		_, copyErr := StreamPipe(remote, local, bufRemote2Local)
@@ -107,7 +108,15 @@ func DuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local [
 			err:       errors.Join(copyErr, closeErr),
 		}
 	}()
+	return results
+}
 
+// DuplexPipeUntilRemoteEOF is for shell-like sessions
+// returns after the remote-to-local direction finishes, and tries to stop the still-running local-to-remote reader
+// this preserves interactive shell behavior where remote process exit should end the client session
+// even if stdin is still open or blocked in a terminal read
+func DuplexPipeUntilRemoteEOF(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local []byte) error {
+	results := startDuplexPipe(local, remote, bufLocal2Remote, bufRemote2Local)
 	// we want preserve the original interactive-shell behavior:
 	// once remote ends, the pipe is considered done even if the local input side is still open.
 	var errs []error
@@ -141,6 +150,22 @@ func DuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local [
 				errs = append(errs, fmt.Errorf("%s: %w", result.direction, result.err))
 			}
 		case <-time.After(duplexPipeDrainTimeout):
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// DuplexPipeHalfClose is for TCP-like semantic: two symmetric half-close streams
+// EOF in one direction only closes the opposite write side
+// the function only returns after both directions have drained
+// avoids dropping delayed data from the remaining direction
+func DuplexPipeHalfClose(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local []byte) error {
+	results := startDuplexPipe(local, remote, bufLocal2Remote, bufRemote2Local)
+	var errs []error
+	for i := 0; i < 2; i++ {
+		result := <-results
+		if result.err != nil && !isExpectedCloseError(result.err) {
+			errs = append(errs, fmt.Errorf("%s: %w", result.direction, result.err))
 		}
 	}
 	return errors.Join(errs...)

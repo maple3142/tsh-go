@@ -21,7 +21,7 @@ This program is only for helping research or educational purpose,
 - Direct connection mode and connect-back mode
 - File upload and download
 - Local SOCKS5 proxy through the server
-- Stdio-to-TCP pipe mode like `nc`
+- Stdio-to-TCP pipe mode like `nc -N`
 - Can be cross-compiled to multiple platforms thanks to the Go toolchain
 - Faster connection establishment speed over SSH
 
@@ -198,7 +198,7 @@ the server to establish the reverse connection.
 ## Pipe Mode
 
 Pipe mode connects the client's stdin/stdout to a TCP target as seen from the
-server. Like `nc` does.
+server. Like `nc -N` does.
 
 ```sh
 tsh c -c target pipe internal-host:22
