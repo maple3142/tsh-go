@@ -170,6 +170,15 @@ func handleGetFile(stream utils.DuplexStreamEx) {
 		return
 	}
 	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		protocol.WriteStatusError(stream, err)
+		return
+	}
+	if fi.IsDir() {
+		protocol.WriteStatusError(stream, fmt.Errorf("%s is a directory", filename))
+		return
+	}
 	if err := protocol.WriteStatusOK(stream); err != nil {
 		return
 	}
