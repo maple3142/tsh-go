@@ -116,14 +116,12 @@ Run a single command:
 tsh c -c target 'uname -a'
 ```
 
-If stdin is a terminal, the client requests a PTY by default. To force non-TTY
-mode, pass `--tty=false`:
+Like SSH, the client requests a PTY by default for an interactive shell, but
+does not request one when a command is provided. To force TTY mode, simply add `-t`:
 
 ```sh
-tsh c -c target --tty=false 'id'
+tsh c -c target -t htop
 ```
-
-This is useful if you want to pipe the result for local command processing.
 
 ## Connect-Back Mode
 

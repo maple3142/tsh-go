@@ -2,23 +2,18 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"tsh-go/internal/client"
 	"tsh-go/internal/protocol"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 func init() {
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		shellUseTty = true
-	}
 	clientCmd.PersistentFlags().StringVarP(&clientSecret, "secret", "s", defaultSecret, "Pre-shared secret for encryption")
 	clientCmd.PersistentFlags().StringVarP(&clientHost, "connect", "c", "", "Target host, use 'cb' for connect-back mode")
 	clientCmd.MarkPersistentFlagRequired("connect")
 	clientCmd.PersistentFlags().IntVarP(&clientPort, "port", "p", defaultPort, "Target port")
-	clientCmd.Flags().BoolVarP(&shellUseTty, "tty", "t", shellUseTty, "Use TTY for shell, will be true by default if stdin is a terminal")
+	clientCmd.Flags().BoolVarP(&shellUseTty, "tty", "t", false, "Use TTY for shell, defaults to true without command and false with command (like ssh)")
 	clientCmd.AddCommand(clientKillCmd)
 	clientCmd.AddCommand(clientGetCmd)
 	clientCmd.AddCommand(clientPutCmd)
@@ -51,7 +46,11 @@ var clientCmd = &cobra.Command{
 		if len(args) > 0 {
 			arg.Command = args[0]
 		}
-		if shellUseTty {
+		useTTY := len(args) == 0
+		if cmd.Flags().Changed("tty") {
+			useTTY = shellUseTty
+		}
+		if useTTY {
 			return client.Run([]byte(clientSecret), clientHost, clientPort, protocol.RunShell, arg)
 		}
 		return client.Run([]byte(clientSecret), clientHost, clientPort, protocol.RunShellNoTTY, arg)
