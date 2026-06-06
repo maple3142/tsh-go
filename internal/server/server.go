@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/yamux"
 )
 
+// the reason why we need serverRunner is to gracefully stop the server when receiving kill command
 type serverRunner struct {
 	done chan struct{}
 	once sync.Once
