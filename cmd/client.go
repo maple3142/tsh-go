@@ -46,16 +46,15 @@ var clientCmd = &cobra.Command{
 	Example: `  tsh client -c 172.16.123.45
   tsh client -c cb -p 1337
   tsh client -c 127.0.0.1 -s hello 'ls -la /'`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		arg := client.RunShellArgs{Command: "exec bash --login"}
 		if len(args) > 0 {
 			arg.Command = args[0]
 		}
 		if shellUseTty {
-			client.Run([]byte(clientSecret), clientHost, clientPort, constants.RunShell, arg)
-		} else {
-			client.Run([]byte(clientSecret), clientHost, clientPort, constants.RunShellNoTTY, arg)
+			return client.Run([]byte(clientSecret), clientHost, clientPort, constants.RunShell, arg)
 		}
+		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.RunShellNoTTY, arg)
 	},
 }
 
@@ -63,8 +62,8 @@ var clientKillCmd = &cobra.Command{
 	Use:   "kill",
 	Args:  cobra.NoArgs,
 	Short: "Kill remote server",
-	Run: func(cmd *cobra.Command, args []string) {
-		client.Run([]byte(clientSecret), clientHost, clientPort, constants.Kill, nil)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.Kill, nil)
 	},
 }
 var clientGetCmd = &cobra.Command{
@@ -77,9 +76,9 @@ var clientGetCmd = &cobra.Command{
  If the destination is a file or not exist, the file will be saved with the specified name.`,
 	Example: `  tsh client -c 127.0.0.1 get ./path/to/file.txt ./file.txt
   tsh client -c 127.0.0.1 get C:/Windows/win.ini -`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		arg := client.GetFileArgs{Src: args[0], Dst: args[1]}
-		client.Run([]byte(clientSecret), clientHost, clientPort, constants.GetFile, arg)
+		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.GetFile, arg)
 	},
 }
 var clientPutCmd = &cobra.Command{
@@ -92,9 +91,9 @@ var clientPutCmd = &cobra.Command{
  If the destination is a file or not exist, the file will be saved with the specified name.`,
 	Example: `  tsh client -c 127.0.0.1 put ./file.txt /tmp/file.txt
   tsh client -c 127.0.0.1 put - C:/Users/username/Desktop/file.txt < file.txt`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		arg := client.PutFileArgs{Src: args[0], Dst: args[1]}
-		client.Run([]byte(clientSecret), clientHost, clientPort, constants.PutFile, arg)
+		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.PutFile, arg)
 	},
 }
 var clientSocks5Cmd = &cobra.Command{
@@ -102,9 +101,9 @@ var clientSocks5Cmd = &cobra.Command{
 	Args:    cobra.ExactArgs(1),
 	Short:   "Start a local socks5 proxy (not recommended to be used in connect-back mode)",
 	Example: `  tsh client -c 127.0.0.1 socks5 localhost:9050`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		arg := client.Socks5Args{Socks5Addr: args[0]}
-		client.Run([]byte(clientSecret), clientHost, clientPort, constants.SOCKS5, arg)
+		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.SOCKS5, arg)
 	},
 }
 var clientPipeCmd = &cobra.Command{
@@ -114,8 +113,8 @@ var clientPipeCmd = &cobra.Command{
 	Long: `Redirect stdin/stdout to remote tcp target.
  It is similar to starting socks5 and connect it using 'nc -X 5 -x localhost:9050 host port'.`,
 	Example: `  ssh -o ProxyCommand='tsh client -c target pipe %h:%p' user@host`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		arg := client.PipeArgs{TargetAddr: args[0]}
-		client.Run([]byte(clientSecret), clientHost, clientPort, constants.Pipe, arg)
+		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.Pipe, arg)
 	},
 }

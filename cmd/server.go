@@ -30,7 +30,7 @@ var serverCmd = &cobra.Command{
 	Example: `  tsh server
   tsh server -s hello -p 1337
   tsh server -c 192.168.87.63 --delay 3 -d`,
-	Run: func(cmd *cobra.Command, args []string) {
-		server.Run([]byte(serverSecret), serverConnectBackHost, serverPort, serverConnectBackDelay, serverIsDaemon)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return server.Run([]byte(serverSecret), serverConnectBackHost, serverPort, serverConnectBackDelay, serverIsDaemon)
 	},
 }

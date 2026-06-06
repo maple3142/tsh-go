@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -23,18 +24,41 @@ import (
 	"github.com/hashicorp/yamux"
 )
 
-func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
+type serverRunner struct {
+	done chan struct{}
+	once sync.Once
+}
+
+func newServerRunner() *serverRunner {
+	return &serverRunner{done: make(chan struct{})}
+}
+
+func (r *serverRunner) stop() {
+	r.once.Do(func() {
+		close(r.done)
+	})
+}
+
+func (r *serverRunner) stopped() bool {
+	select {
+	case <-r.done:
+		return true
+	default:
+		return false
+	}
+}
+
+func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) error {
 	var isDaemon bool
 	if os.Getenv("TSH_RUNNING_AS_DAEMON") == "1" {
 		isDaemon = true
 		os.Unsetenv("TSH_RUNNING_AS_DAEMON")
 	}
 	if runAsDaemon && !isDaemon {
-		if bg.RunInBackground() != nil {
-			log.Panicln("Failed to run as daemon")
-			os.Exit(1)
+		if err := bg.RunInBackground(); err != nil {
+			return fmt.Errorf("failed to run as daemon: %w", err)
 		}
-		os.Exit(0)
+		return nil
 	}
 
 	if runAsDaemon {
@@ -48,19 +72,29 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 
 	// apply kdf
 	secret = utils.KDF(secret)
+	runner := newServerRunner()
 
 	if host == "" {
 		addr := fmt.Sprintf(":%d", port)
 		ln, err := pel.Listen(addr, secret, false)
 		if err != nil {
-			log.Println(err)
-			os.Exit(1)
+			return err
 		}
+		defer ln.Close()
+		go func() {
+			// when runner is stopped, close listener to unblock Accept
+			<-runner.done
+			ln.Close()
+		}()
 		for {
 			stream, err := ln.Accept()
 			if err == nil {
-				go handleGeneric(stream)
+				go handleGeneric(runner, stream)
 			} else {
+				// if error is due to listener being closed, exit gracefully
+				if runner.stopped() {
+					return nil
+				}
 				log.Printf("Accept failed: %v\n", err)
 			}
 		}
@@ -68,14 +102,21 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 		// connect back mode
 		addr := fmt.Sprintf("%s:%d", host, port)
 		for {
+			if runner.stopped() {
+				return nil
+			}
 			stream, err := pel.Dial(addr, secret, true)
 			if err == nil {
 				log.Println("Connected to", addr)
-				go handleGeneric(stream)
+				go handleGeneric(runner, stream)
 			} else {
 				log.Printf("Dial failed: %v\n", err)
 			}
-			time.Sleep(time.Duration(delay) * time.Second)
+			select {
+			case <-runner.done:
+				return nil
+			case <-time.After(time.Duration(delay) * time.Second):
+			}
 		}
 	}
 }
@@ -83,7 +124,7 @@ func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
 // entry handler,
 // automatically close connection after handling
 // it's safe to run with goroutine
-func handleGeneric(stream utils.DuplexStreamEx) {
+func handleGeneric(runner *serverRunner, stream utils.DuplexStreamEx) {
 	defer stream.Close()
 	defer func() {
 		err := recover()
@@ -98,7 +139,7 @@ func handleGeneric(stream utils.DuplexStreamEx) {
 	}
 	switch buffer[0] {
 	case constants.Kill:
-		os.Exit(0)
+		runner.stop()
 	case constants.GetFile:
 		handleGetFile(stream)
 	case constants.PutFile:
