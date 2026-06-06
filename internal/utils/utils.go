@@ -110,5 +110,6 @@ func ReadVarLength(reader io.Reader, buf []byte) ([]byte, error) {
 
 func KDF(secret []byte) []byte {
 	// assuming that secret is not a short input like a password
-	return sha256.New().Sum(secret)
+	sum := sha256.Sum256(secret)
+	return sum[:]
 }
