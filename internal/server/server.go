@@ -17,6 +17,7 @@ import (
 	"tsh-go/internal/bg"
 	"tsh-go/internal/constants"
 	"tsh-go/internal/pel"
+	"tsh-go/internal/protocol"
 	"tsh-go/internal/pty"
 	"tsh-go/internal/socks5"
 	"tsh-go/internal/utils"
@@ -133,25 +134,25 @@ func handleGeneric(runner *serverRunner, stream utils.DuplexStreamEx) {
 			log.Println(err)
 		}
 	}()
-	buffer := make([]byte, 1)
-	n, err := stream.Read(buffer)
-	if err != nil || n != 1 {
+	req, err := protocol.ReadRequest(stream)
+	if err != nil {
+		log.Println(err)
 		return
 	}
-	switch buffer[0] {
-	case constants.Kill:
+	switch req.Mode {
+	case protocol.Kill:
 		runner.stop()
-	case constants.GetFile:
+	case protocol.GetFile:
 		handleGetFile(stream)
-	case constants.PutFile:
+	case protocol.PutFile:
 		handlePutFile(stream)
-	case constants.RunShell:
+	case protocol.RunShell:
 		handleRunShell(stream)
-	case constants.SOCKS5:
+	case protocol.SOCKS5:
 		handleSocks5(stream)
-	case constants.Pipe:
+	case protocol.Pipe:
 		handlePipe(stream)
-	case constants.RunShellNoTTY:
+	case protocol.RunShellNoTTY:
 		handleRunShellNoTTY(stream)
 	}
 }

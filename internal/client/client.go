@@ -12,6 +12,7 @@ import (
 
 	"tsh-go/internal/constants"
 	"tsh-go/internal/pel"
+	"tsh-go/internal/protocol"
 	"tsh-go/internal/utils"
 
 	"github.com/hashicorp/yamux"
@@ -41,7 +42,7 @@ type PipeArgs struct {
 	TargetAddr string
 }
 
-func Run(secret []byte, host string, port int, mode uint8, arg any) error {
+func Run(secret []byte, host string, port int, mode protocol.Mode, arg any) error {
 	// apply kdf
 	secret = utils.KDF(secret)
 
@@ -73,7 +74,7 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) error {
 					continue
 				}
 				log.Println("connected.")
-				if _, err := stream.Write([]byte{mode}); err != nil {
+				if err := protocol.WriteRequest(stream, protocol.Request{Mode: mode}); err != nil {
 					stream.Close()
 					return nil, err
 				}
@@ -85,7 +86,7 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) error {
 			if err != nil {
 				return nil, err
 			}
-			if _, err := stream.Write([]byte{mode}); err != nil {
+			if err := protocol.WriteRequest(stream, protocol.Request{Mode: mode}); err != nil {
 				stream.Close()
 				return nil, err
 			}
@@ -94,7 +95,7 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) error {
 	}
 
 	switch mode {
-	case constants.Kill:
+	case protocol.Kill:
 		stream, err := waitForConnection()
 		if err != nil {
 			return err
@@ -102,20 +103,20 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) error {
 		stream.Close()
 		log.Println("Server killed")
 		return nil
-	case constants.RunShell:
+	case protocol.RunShell:
 		return handleRunShell(waitForConnection, arg.(RunShellArgs))
-	case constants.GetFile:
+	case protocol.GetFile:
 		return handleGetFile(waitForConnection, arg.(GetFileArgs))
-	case constants.PutFile:
+	case protocol.PutFile:
 		return handlePutFile(waitForConnection, arg.(PutFileArgs))
-	case constants.SOCKS5:
+	case protocol.SOCKS5:
 		return handleSocks5(waitForConnection, arg.(Socks5Args))
-	case constants.Pipe:
+	case protocol.Pipe:
 		return handlePipe(waitForConnection, arg.(PipeArgs))
-	case constants.RunShellNoTTY:
+	case protocol.RunShellNoTTY:
 		return handleRunShellNoTTY(waitForConnection, arg.(RunShellArgs))
 	}
-	return fmt.Errorf("unknown client mode: %d", mode)
+	return fmt.Errorf("unknown client mode: %s", mode)
 }
 
 func handleGetFile(waitForConnection func() (utils.DuplexStreamEx, error), arg GetFileArgs) error {

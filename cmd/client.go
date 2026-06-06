@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"tsh-go/internal/client"
-	"tsh-go/internal/constants"
+	"tsh-go/internal/protocol"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -52,9 +52,9 @@ var clientCmd = &cobra.Command{
 			arg.Command = args[0]
 		}
 		if shellUseTty {
-			return client.Run([]byte(clientSecret), clientHost, clientPort, constants.RunShell, arg)
+			return client.Run([]byte(clientSecret), clientHost, clientPort, protocol.RunShell, arg)
 		}
-		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.RunShellNoTTY, arg)
+		return client.Run([]byte(clientSecret), clientHost, clientPort, protocol.RunShellNoTTY, arg)
 	},
 }
 
@@ -63,7 +63,7 @@ var clientKillCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	Short: "Kill remote server",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.Kill, nil)
+		return client.Run([]byte(clientSecret), clientHost, clientPort, protocol.Kill, nil)
 	},
 }
 var clientGetCmd = &cobra.Command{
@@ -78,7 +78,7 @@ var clientGetCmd = &cobra.Command{
   tsh client -c 127.0.0.1 get C:/Windows/win.ini -`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		arg := client.GetFileArgs{Src: args[0], Dst: args[1]}
-		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.GetFile, arg)
+		return client.Run([]byte(clientSecret), clientHost, clientPort, protocol.GetFile, arg)
 	},
 }
 var clientPutCmd = &cobra.Command{
@@ -93,7 +93,7 @@ var clientPutCmd = &cobra.Command{
   tsh client -c 127.0.0.1 put - C:/Users/username/Desktop/file.txt < file.txt`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		arg := client.PutFileArgs{Src: args[0], Dst: args[1]}
-		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.PutFile, arg)
+		return client.Run([]byte(clientSecret), clientHost, clientPort, protocol.PutFile, arg)
 	},
 }
 var clientSocks5Cmd = &cobra.Command{
@@ -103,7 +103,7 @@ var clientSocks5Cmd = &cobra.Command{
 	Example: `  tsh client -c 127.0.0.1 socks5 localhost:9050`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		arg := client.Socks5Args{Socks5Addr: args[0]}
-		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.SOCKS5, arg)
+		return client.Run([]byte(clientSecret), clientHost, clientPort, protocol.SOCKS5, arg)
 	},
 }
 var clientPipeCmd = &cobra.Command{
@@ -111,10 +111,10 @@ var clientPipeCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Short: "Redirect stdin/stdout to remote tcp target",
 	Long: `Redirect stdin/stdout to remote tcp target.
- It is similar to starting socks5 and connect it using 'nc -X 5 -x localhost:9050 host port'.`,
+	It is similar to starting socks5 and connect it using 'nc -X 5 -x localhost:9050 host port'.`,
 	Example: `  ssh -o ProxyCommand='tsh client -c target pipe %h:%p' user@host`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		arg := client.PipeArgs{TargetAddr: args[0]}
-		return client.Run([]byte(clientSecret), clientHost, clientPort, constants.Pipe, arg)
+		return client.Run([]byte(clientSecret), clientHost, clientPort, protocol.Pipe, arg)
 	},
 }
