@@ -19,6 +19,8 @@ import (
 	"tsh-go/internal/pty"
 	"tsh-go/internal/socks5"
 	"tsh-go/internal/utils"
+
+	"github.com/hashicorp/yamux"
 )
 
 func Run(secret []byte, host string, port int, delay int, runAsDaemon bool) {
@@ -221,6 +223,28 @@ func handleRunShellNoTTY(stream utils.DuplexStreamEx) {
 }
 
 func handleSocks5(stream utils.DuplexStreamEx) {
+	config := yamux.DefaultConfig()
+	config.LogOutput = io.Discard
+	session, err := yamux.Server(stream, config)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	defer session.Close()
+
+	for {
+		conn, err := session.Accept()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		go handleSocks5Stream(utils.DSEFromRW(conn, conn))
+	}
+}
+
+func handleSocks5Stream(stream utils.DuplexStreamEx) {
+	defer stream.Close()
+
 	srv, _ := socks5.NewClassicServer("", "")
 	srv.SupportedCommands = []byte{socks5.CmdConnect} // TODO: CmdUDP
 	if err := srv.Negotiate(stream); err != nil {

@@ -8,11 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"tsh-go/internal/constants"
 	"tsh-go/internal/pel"
 	"tsh-go/internal/utils"
 
+	"github.com/hashicorp/yamux"
 	"github.com/schollz/progressbar/v3"
 	terminal "golang.org/x/term"
 )
@@ -53,6 +55,9 @@ func Run(secret []byte, host string, port int, mode uint8, arg any) {
 	var err error
 
 	waitForConnection := func() utils.DuplexStreamEx {
+		// avoid calling this concurrently in connect-back mode
+		// because multiple goroutines trying to listen on same port = error
+		// a lock may fix this lol
 		if isConnectBack {
 			addr := fmt.Sprintf(":%d", port)
 			for {
@@ -294,18 +299,66 @@ func handleSocks5(waitForConnection func() utils.DuplexStreamEx, arg Socks5Args)
 		os.Exit(1)
 	}
 	log.Println("Socks5 proxy listening at", l.Addr())
+
+	// use yamux to multiplex multiple socks5 streams over a connection
+	// especially useful in connect-back mode so we don't need to wait for a delay for every connection
+
+	var mu sync.Mutex // lock for mutation to session
+	var session *yamux.Session
+	getSession := func() (*yamux.Session, error) {
+		// ensure there is only one yamux session even if called concurrently
+		mu.Lock()
+		defer mu.Unlock()
+
+		if session != nil && !session.IsClosed() {
+			return session, nil
+		}
+
+		stream := waitForConnection()
+		config := yamux.DefaultConfig()
+		config.LogOutput = io.Discard
+		nextSession, err := yamux.Client(stream, config)
+		if err != nil {
+			stream.Close()
+			return nil, err
+		}
+		session = nextSession
+		return session, nil
+	}
+
 	for {
 		conn, err := l.AcceptTCP()
 		if err != nil {
 			log.Println(err)
 			continue
 		}
-		go func() {
-			stream := waitForConnection()
+		go func(conn *net.TCPConn) {
+			currentSession, err := getSession()
+			if err != nil {
+				conn.Close()
+				log.Println("Failed to establish socks5 mux session:", err)
+				return
+			}
+			stream, err := currentSession.Open()
+			if err != nil {
+				// if opening stream failed, treat the session as broken and close it
+				// so the next connection will create a new session with waitForConnection
+				mu.Lock()
+				if session == currentSession {
+					// note this goroutine may run concurrently
+					// we need to ensure we are closing the correct session
+					session.Close()
+					session = nil
+				}
+				mu.Unlock()
+				conn.Close()
+				log.Println("Failed to open socks5 mux stream:", err)
+				return
+			}
 			log.Println("Connection established", conn.RemoteAddr())
-			utils.DuplexPipe(conn, stream, nil, nil)
+			utils.DuplexPipe(conn, utils.DSEFromRW(stream, stream), nil, nil)
 			log.Println("Connection closed", conn.RemoteAddr())
-		}()
+		}(conn)
 	}
 }
 

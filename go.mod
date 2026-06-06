@@ -8,6 +8,7 @@ require (
 	github.com/creack/pty v1.1.23
 	github.com/denisbrodbeck/machineid v1.0.1
 	github.com/gonutz/ide v0.0.0-20200517034207-df64a3832118
+	github.com/hashicorp/yamux v0.1.2
 	github.com/iamacarpet/go-winpty v1.0.4
 	github.com/schollz/progressbar/v3 v3.16.0
 	github.com/spf13/cobra v1.8.1
