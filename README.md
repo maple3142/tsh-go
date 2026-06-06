@@ -1,128 +1,224 @@
 # tsh-go
 
-This is [Tiny SHell](https://github.com/creaktive/tsh) rewritten in Go programming language.
+`tsh-go` is a small encrypted remote shell and tunneling tool inspired by [Tiny SHell](https://github.com/creaktive/tsh), implemented in Go, forked from [CykuTW/tsh-go](https://github.com/CykuTW/tsh-go).
+
+It builds a single CLI with two roles:
+
+- `tsh server`: listens for, or connects back to, a client.
+- `tsh client`: opens a shell, runs a command, transfers files, starts a SOCKS5 proxy, or pipes stdio to a TCP target through the server.
 
 ## Disclaimer
 
 This program is only for helping research or educational purpose,
 
-**DON'T** use for illegal purpose or in any unauthorized environment.
+**DO NOT** use for illegal purpose or in any unauthorized environment.
 
-## Description
+## Features
 
-I like tsh and I use it a lot in my daily research work. It's especially handy when researching devices that don't have built-in sshd or are network limited.
+- Encrypted connection with pre-shared-secret
+- Interactive PTY shell
+- Non-TTY command execution for scripting
+- Direct connection mode and connect-back mode
+- File upload and download
+- Local SOCKS5 proxy through the server
+- Stdio-to-TCP pipe mode like `nc`
+- Can be cross-compiled to multiple platforms thanks to the Go toolchain
+- Faster connection establishment speed over SSH
 
-However, sometimes these devices use special systems or architectures that can make cross-compiling tsh painful. So I decided to rewrite tsh in go, and thanks to go's powerful cross-platform compilation capabilities, I can use tsh more easily on more systems and architectures.
+## Build
 
-For example, I successfully compiled to the following platforms:
-- aix
-- darwin
-- dragonfly
-- freebsd
-- illumos
-- netbsd
-- openbsd
-- solaris
-- windows
+Requirements:
 
-## Usage
+- Go 1.23 or newer
+- `make` for the provided build targets
 
-### Compiling
+Show available targets:
 
-#### Help
-```
-$ make
-
-Please specify one of these targets:
-        make linux
-        make windows
-
-It can be compiled to other unix-like platforms supported by go compiler:
-        GOOS=freebsd GOARCH=386 make unix
-
-Get more with:
-        go tool dist list
+```sh
+make
 ```
 
-#### Build for linux
+Build Linux amd64 binaries:
 
-```
-$ make linux
-env GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ./build/tshd_linux_amd64 cmd/tshd.go
-env GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ./build/tsh_linux_amd64 cmd/tsh.go
+```sh
+make linux
 ```
 
-### How to use the tshd (server)
+Build Windows amd64 binaries:
 
-#### Help
-
-```
-$ ./build/tshd_linux_amd64 -h
-Usage of tshd_linux_amd64:
-  -c string
-        connect back host
-  -d int
-        connect back delay (default 5)
-  -daemon
-        (internal used) is in daemon
-  -p int
-        port (default 1234)
-  -s string
-        secret (default "1234")
+```sh
+make windows
 ```
 
-#### Listening on target
+Build another Unix-like target supported by Go:
 
-```
-$ ./build/tshd_linux_amd64
-```
-
-#### Connect back mode
-
-```
-$ ./build/tshd_linux_amd64 -c <client hostname>
+```sh
+GOOS=freebsd GOARCH=386 make unix
 ```
 
-### How to use the tsh (client)
+The Makefile creates two binaries from the same `main.go`:
 
-#### Help
+- `build/tsh_<goos>_<goarch>`: normal CLI. Run commands such as `tsh c ...` and `tsh s ...`.
+- `build/tshd_<goos>_<goarch>`: server-oriented build with embedded default arguments. By default, running it with no arguments behaves like `tsh s -d -q`.
 
-```
-$ ./build/tsh_linux_amd64 -h
-Usage: ./tsh_linux_amd64 [-s secret] [-p port] <action>
-  action:
-        <hostname|cb> [command]
-        <hostname|cb> get <source-file> <dest-dir>
-        <hostname|cb> put <source-file> <dest-dir>
-  -p int
-        port (default 1234)
-  -s string
-        secret (default "1234")
+The default embedded secret is generated in `cmd/secret.txt`. To generate a new default secret before building:
+
+```sh
+make clean-secret
+make linux
 ```
 
-#### Start a shell
+You can also override the default no-argument behavior of `tshd_*` builds:
 
-```
-$ ./build/tsh_linux_amd64 <server hostname>
-```
-
-#### Execute a command
-
-```
-$ ./build/tsh_linux_amd64 <server hostname> 'uname -a'
+```sh
+TSHD_DEFAULT_ARGS='s -d -q -c 127.0.0.1 -p 7890 -s secret' make linux
 ```
 
-#### Transfer files
+## Command Overview
+
+```sh
+Usage:
+  tsh s [-d] [-q] [-s secret] [-p port] [-c cb-host] [--delay n]
+  tsh c -c <host|cb> [-s secret] [-p port] [command]
+  tsh c -c <host|cb> get <src> <dst>
+  tsh c -c <host|cb> put <src> <dst>
+  tsh c -c <host|cb> socks5 <addr>
+  tsh c -c <host|cb> pipe <addr>
+  tsh c -c <host|cb> kill
+
+Options:
+  -c  target host; use "cb" on the client for connect-back mode
+  -p  port, default 2413
+  -s  pre-shared secret
+  -q  quiet mode
+  -d  run server in background
+```
+
+## Direct Mode
+
+In direct mode, the server listens and the client connects to it.
+
+Start the server:
+
+```sh
+tsh s
+```
+
+Open an interactive shell:
+
+```sh
+tsh c -c target
+```
+
+Run a single command:
+
+```sh
+tsh c -c target 'uname -a'
+```
+
+If stdin is a terminal, the client requests a PTY by default. To force non-TTY
+mode, pass `--tty=false`:
+
+```sh
+tsh c -c target --tty=false 'id'
+```
+
+This is useful if you want to pipe the result for local command processing.
+
+## Connect-Back Mode
+
+Connect-back mode reverses the TCP connection. The client listens, and the
+server repeatedly connects back to the client.
+
+Start the client listener:
+
+```sh
+tsh c -c cb
+```
+
+Start the server in connect-back mode:
+
+```sh
+tsh s -c client
+```
+
+Port flag means the port to conenct:
 
 ```
-$ ./build/tsh_linux_amd64 <server hostname> get /etc/passwd .
-$ ./build/tsh_linux_amd64 <server hostname> put myfile /tmp
+tsh s -c client -p 2413
 ```
 
-#### Connect back mode
+Set the retry delay in seconds:
 
+```sh
+tsh s -c client --delay 3
 ```
-$ ./build/tsh_linux_amd64 cb
-$ ./build/tsh_linux_amd64 cb get /etc/passwd .
-$ ./build/tsh_linux_amd64 cb put myfile /tmp
+
+Run the server in the background (and supress outputs):
+
+```sh
+tsh s -d -q
+```
+
+Stop a running server through the protocol:
+
+```sh
+tsh c -c target kill
+```
+
+## File Transfer
+
+`get` and `put` work like `cp`: if the destination is a directory, the file is copied into it using its basename. Use `-` for stdin/stdout.
+
+```sh
+# remote -> local
+tsh c -c target get /etc/passwd ./passwd
+tsh c -c target get /etc/hostname -
+
+# local -> remote
+tsh c -c target put ./tool /tmp/target
+tsh c -c target put ./tool /tmp/
+printf 'hello\n' | tsh c -c target put - /tmp/hello.txt
+```
+
+## SOCKS5 Proxy
+
+Start a local SOCKS5 proxy whose outbound connections are made from the server:
+
+```sh
+tsh c -c target socks5 localhost:9050
+```
+
+Then point SOCKS5-capable tools at `localhost:9050`.
+
+SOCKS5 mode multiplexes connections over a single encrypted session. It is most
+useful in direct mode; connect-back mode works, but the command has to wait for
+the server to establish the reverse connection.
+
+## Pipe Mode
+
+Pipe mode connects the client's stdin/stdout to a TCP target as seen from the
+server. Like `nc` does.
+
+```sh
+tsh c -c target pipe internal-host:22
+```
+
+One practical use is SSH proxying:
+
+```sh
+ssh -o ProxyCommand='tsh c -c target pipe %h:%p' user@internal-host
+```
+
+## TSH over proxy
+
+Outbound client and server dials use Go's proxy environment support. Environment
+variables such as `ALL_PROXY` and `NO_PROXY` are honored for TCP dials.
+
+## Development
+
+Run tests:
+
+```sh
+go test -v ./...
 ```
