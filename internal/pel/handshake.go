@@ -25,7 +25,8 @@ func init() {
 	curve25519q.SetString("1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed", 16)
 }
 
-// Handshake performs the key exchange for this encrypted layer.
+// do an SPAKE2-like key exchange (likely weaker but simpler to implement)
+// return err if the packet read/write operation takes more than HandshakeRWTimeout (default: 3) seconds
 func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 	wb, wib := generateW(layer.secret)
 
