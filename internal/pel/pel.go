@@ -4,6 +4,7 @@ import (
 	"crypto/cipher"
 	"fmt"
 	"net"
+	"sync/atomic"
 
 	"tsh-go/internal/constants"
 )
@@ -20,8 +21,7 @@ type PktEncLayer struct {
 	sendBuffer []byte // used for avoid allocation
 	tmpBuffer  []byte // used for store remaining data if the read buffer is not enough
 	// record whether the connection is still readable
-	isEof   bool
-	eofChan chan struct{}
+	readClosed atomic.Bool
 }
 
 // Packet Encryption Layer Listener
@@ -40,8 +40,6 @@ func NewPktEncLayer(conn net.Conn, secret []byte) (*PktEncLayer, error) {
 		recvBuffer: make([]byte, 2+constants.Bufsize),
 		sendBuffer: make([]byte, 2+constants.Bufsize),
 		tmpBuffer:  nil,
-		isEof:      false,
-		eofChan:    make(chan struct{}),
 	}
 	return layer, nil
 }

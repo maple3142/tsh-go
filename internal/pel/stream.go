@@ -78,13 +78,8 @@ func (layer *PktEncLayer) CloseWrite() error {
 }
 
 func (layer *PktEncLayer) CloseRead() error {
-	layer.isEof = true
-	// non-blocking send
-	select {
-	case layer.eofChan <- struct{}{}:
-	default:
-	}
-	return nil
+	layer.readClosed.Store(true)
+	return layer.conn.SetReadDeadline(time.Now()) // this cause timeout for any pending read
 }
 
 func (layer *PktEncLayer) Read(p []byte) (int, error) {
@@ -153,20 +148,16 @@ func (layer *PktEncLayer) read(p []byte) (int, error) {
 }
 
 func (layer *PktEncLayer) readConnUntilFilled(p []byte) error {
-	if layer.isEof {
+	if layer.readClosed.Load() {
 		return io.EOF
 	}
-	ch := make(chan error)
-	go func() {
-		_, err := io.ReadFull(layer.conn, p)
-		ch <- err
-	}()
-	select {
-	case err := <-ch:
-		return err
-	case <-layer.eofChan:
+	_, err := io.ReadFull(layer.conn, p)
+	if err != nil && layer.readClosed.Load() {
+		// if another goroutine call CloseRead() while we are reading
+		// it would cause timeout error, and if readClosed is set we can treat it as EOF
 		return io.EOF
 	}
+	return err
 }
 
 func (layer *PktEncLayer) readConnUntilFilledTimeout(p []byte, timeout time.Duration) error {
