@@ -280,10 +280,14 @@ func handleRunShellNoTTY(stream utils.DuplexStreamEx) {
 		return
 	}
 	combinedOutput := io.MultiReader(stdout, stderr)
-	go cmd.Run()
+	if err := cmd.Start(); err != nil {
+		log.Println(err)
+		return
+	}
 	if err := utils.DuplexPipe(stream, utils.DSEFromRW(combinedOutput, stdin), nil, nil); err != nil {
 		log.Println(err)
 	}
+	_ = cmd.Wait()
 }
 
 func handleSocks5(stream utils.DuplexStreamEx) {

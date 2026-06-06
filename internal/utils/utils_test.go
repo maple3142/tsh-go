@@ -50,6 +50,26 @@ func (r *closeTrackingReader) Close() error {
 	return nil
 }
 
+type closeReadTrackingStream struct {
+	*bytes.Buffer
+	closeReadCalled bool
+	closeCalled     bool
+}
+
+func (s *closeReadTrackingStream) CloseRead() error {
+	s.closeReadCalled = true
+	return nil
+}
+
+func (s *closeReadTrackingStream) CloseWrite() error {
+	return nil
+}
+
+func (s *closeReadTrackingStream) Close() error {
+	s.closeCalled = true
+	return nil
+}
+
 func TestDuplexPipeCopiesBothDirections(t *testing.T) {
 	var localOut bytes.Buffer
 	var remoteOut bytes.Buffer
@@ -97,6 +117,20 @@ func TestDuplexPipeTreatsPtyEIOAsExpectedClose(t *testing.T) {
 
 	if err := DuplexPipe(local, remote, make([]byte, 4), make([]byte, 4)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCloseReadOrClosePrefersCloseRead(t *testing.T) {
+	stream := &closeReadTrackingStream{Buffer: &bytes.Buffer{}}
+
+	if err := closeReadOrClose(stream); err != nil {
+		t.Fatal(err)
+	}
+	if !stream.closeReadCalled {
+		t.Fatal("CloseRead was not called")
+	}
+	if stream.closeCalled {
+		t.Fatal("Close was called despite CloseRead support")
 	}
 }
 

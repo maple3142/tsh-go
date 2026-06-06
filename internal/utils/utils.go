@@ -124,7 +124,8 @@ func DuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local [
 	}
 
 	// closing both sides gives the opposite copy goroutine a chance to unblock
-	local.Close()
+	// prefer CloseRead on local when available so pending outbound data is not dropped before fully drained by peer
+	closeReadOrClose(local)
 	remote.Close()
 
 	if !localToRemoteDone {
@@ -143,6 +144,17 @@ func DuplexPipe(local, remote DuplexStreamEx, bufLocal2Remote, bufRemote2Local [
 		}
 	}
 	return errors.Join(errs...)
+}
+
+type closeReader interface {
+	CloseRead() error
+}
+
+func closeReadOrClose(stream DuplexStreamEx) error {
+	if stream, ok := stream.(closeReader); ok {
+		return stream.CloseRead()
+	}
+	return stream.Close()
 }
 
 func isExpectedCloseError(err error) bool {
