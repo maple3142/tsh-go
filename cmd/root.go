@@ -2,7 +2,6 @@ package cmd
 
 import (
 	_ "embed"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -26,9 +25,11 @@ func enableQuietMode() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "tsh",
-	Short: "TSH",
-	Long:  `TSH is like SSH, but simpler.`,
+	Use:           "tsh",
+	Short:         "TSH",
+	Long:          `TSH is like SSH, but simpler.`,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if quiet {
 			enableQuietMode()
@@ -38,7 +39,7 @@ var rootCmd = &cobra.Command{
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		os.Exit(1)
 	}
 }
