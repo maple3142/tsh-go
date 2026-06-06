@@ -25,10 +25,10 @@ func init() {
 	curve25519q.SetString("1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed", 16)
 }
 
-// do an SPAKE2-like key exchange (likely weaker but simpler to implement)
+// do an SPAKE2-like/sk-blinded-X25519 key exchange (likely weaker but simpler to implement)
 // return err if the packet read/write operation takes more than HandshakeRWTimeout (default: 3) seconds
 func (layer *PktEncLayer) Handshake(isInitiator bool) error {
-	wb, wib := generateW(layer.secret)
+	wb := generateW(layer.secret)
 
 	timeout := time.Duration(constants.HandshakeRWTimeout) * time.Second
 	// generate key pair
@@ -58,7 +58,7 @@ func (layer *PktEncLayer) Handshake(isInitiator bool) error {
 	}
 
 	// derive shared secret
-	shared_secret, err = multipleX25519(remote_pk, my_sk, wib) // S=(sk*w^-1)*remote_pk'=(my_sk*remote_sk)*G
+	shared_secret, err = curve25519.X25519(my_sk, remote_pk) // S=my_sk*remote_pk'=w*my_sk*remote_sk*G
 	if err != nil {
 		return NewHandshakeError(constants.PelFailure, "Failed to derive shared secret")
 	}
@@ -119,14 +119,11 @@ func multipleX25519(point []byte, scalars ...[]byte) ([]byte, error) {
 	return pt, nil
 }
 
-func generateW(secret []byte) ([]byte, []byte) {
-	// w * wi = 1 mod q
+func generateW(secret []byte) []byte {
 	var w big.Int
 	w.SetBytes(secret)
 	w.Mod(&w, &curve25519q)
-	var wi big.Int
-	wi.ModInverse(&w, &curve25519q)
+	// we just assume that w != 0
 	wb := w.FillBytes(make([]byte, curve25519.ScalarSize))
-	wib := wi.FillBytes(make([]byte, curve25519.ScalarSize))
-	return wb, wib
+	return wb
 }
